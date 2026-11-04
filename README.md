@@ -8,7 +8,8 @@ A map of a system that an agent can maintain in a small text file and a person c
 - **Impact of a planned change.** Mark a node `+` (new) or `~` (changed) and `sysmap impact`, and the page, show whether the change only reuses shared nodes or reaches into them.
 - **Checked, not banned.** `sysmap check` warns when a business node sits directly inside a shared node, and once per dependency cycle. A deliberate cycle is confirmed with a `| cycle: <reason>` detail line on any node in it; a mounted file's top level is judged inside its own file.
 - **Flows and hedged claims are easy to inspect.** `sysmap show <flow>` prints a flow's steps with their source locations. Mark uncertain claims with `| unverified: <reason>` or `| open: <question>`; `sysmap find --caveats` lists them and `outline` shows a trailing `?N` on each affected node.
-- **No code analysis.** The map is written by the agent from what it read; there are no parsers and no network calls.
+- **Mermaid diagrams stay next to the map.** A node can refer to one or more diagram files with `@ docs/state.mmd` (or `.mermaid`); the page shows a preview in the detail rail and draws each on the canvas with pan and zoom. The file text is loaded at build and serve time, so `sysmap serve` reloads when the diagram changes. Links and images inside a diagram are not loaded. The renderer is embedded only when the map has a diagram.
+- **No code analysis.** The map is written by the agent from what it read; sysmap itself has no code parsers and makes no network calls. Diagram files are rendered locally by the embedded viewer.
 
 ```
 sysmap spec                       # the file format
@@ -48,9 +49,9 @@ go test ./...
 go run . serve examples/shop.smap
 ```
 
-The page lays out nodes with [dagre](https://github.com/dagrejs/dagre) and pans and zooms with [@panzoom/panzoom](https://github.com/timmywil/panzoom) (both MIT), vendored in `internal/smap/vendor/` and inlined into every built page; see the README there for how to update them.
+The page lays out nodes with [dagre](https://github.com/dagrejs/dagre) and pans and zooms with [@panzoom/panzoom](https://github.com/timmywil/panzoom) (both MIT), vendored in `internal/smap/vendor/` and inlined into every built page. Mermaid diagrams render with [Pele](https://github.com/obsidianmd/pele) (MIT), also vendored there and inlined only when the map has at least one diagram; see the README there for how to update them.
 
-In the page: drag the background to pan, pinch or hold Ctrl/Cmd and scroll to zoom, two-finger scroll pans, `+` `-` `0` zoom and reset, double-click a node to go inside it, `Esc` to go back.
+In the page: drag the background to pan, pinch or hold Ctrl/Cmd and scroll to zoom, two-finger scroll pans, `+` `-` `0` zoom and reset, double-click a node to go inside it, `Esc` to go back. A node with a diagram shows a card in the right rail; click "在画布中查看" to open it and `Esc` to return to the architecture graph.
 
 ## Release
 

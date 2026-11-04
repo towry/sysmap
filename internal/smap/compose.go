@@ -1,6 +1,7 @@
 package smap
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +17,12 @@ const maxMountDepth = 8
 // Everything outside a mounted file is an `ext` stub inside it, which the mounting file joins
 // to a real node with `bind`, so the file can still be checked on its own.
 type loader struct {
-	src   map[string]string // file path -> contents
-	diags []Diag
+	src      map[string]string // file path -> contents
+	diags    []Diag
+	diagrams []diagramSource // Mermaid files, in read order, for the version hash
 }
+
+type diagramSource struct{ path, text string }
 
 func (l *loader) add(file string, line int, level, format string, args ...any) {
 	l.diags = append(l.diags, Diag{File: file, Line: line, Level: level, Msg: fmt.Sprintf(format, args...)})
@@ -45,8 +49,123 @@ func (l *loader) read(path string) (*Model, error) {
 		d.File = path
 		l.diags = append(l.diags, d)
 	}
+	l.loadDiagrams(m)
 	m.Files = []string{path}
 	return m, nil
+}
+
+// loadDiagrams reads the Mermaid files a node's `@` refs point at. A path is tried next to
+// the .smap file first, then from the repository root, so a map in a subdirectory can use
+// either style. A missing or unreadable file is an error on the ref's own line.
+func (l *loader) loadDiagrams(m *Model) {
+	for _, id := range m.Order {
+		n := m.Nodes[id]
+		seen := map[string]bool{}
+		for i, ref := range n.Refs {
+			if !isDiagramPath(ref) || seen[ref] {
+				continue
+			}
+			seen[ref] = true
+			line := n.Line
+			if i < len(n.RefLines) {
+				line = n.RefLines[i]
+			}
+			text, path, err := readDiagram(n.File, ref)
+			if err != nil {
+				switch {
+				case errors.Is(err, errDiagramPath):
+					l.add(n.File, line, "error", "diagram %q must be relative to the .smap file and inside %s", ref, repoRoot(n.File))
+				case os.IsNotExist(err):
+					l.add(n.File, line, "error", "diagram %q does not exist (looked next to the map and from the repository root)", ref)
+				default:
+					l.add(n.File, line, "error", "cannot read diagram %q: %v", ref, err)
+				}
+				continue
+			}
+			l.diagrams = append(l.diagrams, diagramSource{path: path, text: text})
+			n.Diagrams = append(n.Diagrams, Diagram{Path: ref, Text: text})
+		}
+	}
+}
+
+func isDiagramPath(path string) bool {
+	lower := strings.ToLower(path)
+	return strings.HasSuffix(lower, ".mmd") || strings.HasSuffix(lower, ".mermaid")
+}
+
+// readDiagram returns the text and the path it was read from. An absolute path, a URL and a
+// path that resolves outside the repository root are rejected, so a shared map cannot embed
+// an arbitrary local file. Otherwise the map's directory wins over the repository root.
+func readDiagram(file, ref string) (string, string, error) {
+	p := filepath.FromSlash(ref)
+	if filepath.IsAbs(p) || strings.Contains(ref, "://") {
+		return "", p, errDiagramPath
+	}
+	root, err := filepath.Abs(repoRoot(file))
+	if err != nil {
+		return "", p, err
+	}
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootReal = root
+	}
+	candidates := []string{
+		filepath.Join(filepath.Dir(file), p),
+		filepath.Join(root, p),
+	}
+	var first error
+	outside := false
+	for _, candidate := range candidates {
+		if !insideDir(root, candidate) {
+			outside = true
+			continue
+		}
+		// Resolve links before reading: a symlink inside the repository can point outside it.
+		real, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			if first == nil || (os.IsNotExist(first) && !os.IsNotExist(err)) {
+				first = err
+			}
+			continue
+		}
+		if !insideDir(rootReal, real) {
+			outside = true
+			continue
+		}
+		data, err := os.ReadFile(real)
+		if err != nil {
+			if first == nil || (os.IsNotExist(first) && !os.IsNotExist(err)) {
+				first = err
+			}
+			continue
+		}
+		return string(data), candidate, nil
+	}
+	if first != nil && !os.IsNotExist(first) {
+		return "", candidates[0], first
+	}
+	if outside {
+		return "", candidates[0], errDiagramPath
+	}
+	if first != nil {
+		return "", candidates[0], first
+	}
+	return "", candidates[0], os.ErrNotExist
+}
+
+var errDiagramPath = errors.New("diagram path must be relative and inside the repository")
+
+// insideDir reports whether path resolves under root, after cleaning but not following links.
+func insideDir(root, path string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // expand mounts every file m asks for, then resolves the binds. All mounts come first, so a

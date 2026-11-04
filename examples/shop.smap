@@ -17,6 +17,8 @@ biz orders "Orders" : cart to paid order
   biz checkout "Checkout" : turns a cart into an order and asks billing to charge it
     | Reserves stock first, then charges; a failed charge releases the reservation.
     @ app/orders/checkout.ex:40
+    @ diagrams/checkout-states.mmd
+    @ diagrams/payment-retry.mmd
   biz order_store "Order store" : source of truth for order state
 
 biz billing "Billing" : invoices and payment

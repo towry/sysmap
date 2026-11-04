@@ -30,6 +30,21 @@ func TestCheckRefsOnlyFailsWithTheFlag(t *testing.T) {
 	}
 }
 
+func TestCheckReportsAMissingDiagramWithItsLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "root.smap")
+	if err := os.WriteFile(path, []byte("biz a \"A\"\n  @ docs/state.mmd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := captureRun(t, "check", path)
+	if code != 1 || out != "" {
+		t.Fatalf("check = exit %d, stdout %q", code, out)
+	}
+	if !strings.Contains(errOut, path+":2: error:") || !strings.Contains(errOut, `diagram "docs/state.mmd" does not exist`) {
+		t.Fatalf("check stderr = %q", errOut)
+	}
+}
+
 func captureRun(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	oldOut, oldErr := os.Stdout, os.Stderr
