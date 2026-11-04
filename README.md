@@ -42,6 +42,16 @@ sysmap check examples/shop-plan.smap --tasks examples/shop.tasks.md
 
 ## Install
 
+From a GitHub Release (Linux or macOS, `amd64` or `arm64`), into `~/.local/bin`:
+
+```
+curl -fsSL https://raw.githubusercontent.com/towry/sysmap/main/install.sh | bash
+```
+
+Set `PREFIX` or `SYSMAP_BIN_DIR` to install elsewhere and `SYSMAP_VERSION=v0.1.0` to pin a version. The script checks the download against the release's `checksums.txt`.
+
+Or build from source:
+
 ```
 go install github.com/towry/sysmap@latest
 ```
@@ -56,3 +66,15 @@ go run . serve examples/shop.smap --tasks examples/shop.tasks.md
 The page lays out nodes with [dagre](https://github.com/dagrejs/dagre) and pans and zooms with [@panzoom/panzoom](https://github.com/timmywil/panzoom) (both MIT), vendored in `internal/smap/vendor/` and inlined into every built page. Mermaid diagrams render with [Pele](https://github.com/obsidianmd/pele) (MIT), also vendored there and inlined only when the map has at least one diagram; see the README there for how to update them.
 
 In the page: drag the background to pan, pinch or hold Ctrl/Cmd and scroll to zoom, two-finger scroll pans, `+` `-` `0` zoom and reset, double-click a node to go inside it, `Esc` to go back. A node with a diagram shows a card in the right rail; click "在画布中查看" to open it and `Esc` to return to the architecture graph.
+
+## Release
+
+1. Merge the commit you want onto `main`.
+2. Tag it and push the tag:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions (`.github/workflows/release.yml`) then builds `sysmap` for Linux and macOS (`amd64` and `arm64`) with GoReleaser and publishes a GitHub Release with the archives and `checksums.txt`, which `install.sh` downloads. Pushes to `main` and pull requests run `.github/workflows/ci.yml` (vet, test and build on Linux and macOS).
