@@ -1,0 +1,72 @@
+# The same shop with a planned change: a new Refund node reusing Ledger, and Ledger itself marked as changing.
+# Run `sysmap impact examples/shop-plan.smap`.
+# Example: a small online shop. Run `sysmap outline examples/shop.smap`.
+system "Shop" : online shop with orders, billing and fulfilment
+
+core platform "Platform" : shared by every business area; change with care
+  core auth "Auth" : session and permission checks for all callers
+  ~ core ledger "Ledger" : the only door for money movement
+    | Every balance change is a double entry.
+    | Never write to account tables outside this node.
+    @ app/ledger/ledger.ex:12
+  core events "Event bus" : at-least-once delivery between areas
+  core notify "Notifications" : email, SMS and push senders
+    core email "Email"
+    core sms "SMS"
+
+biz orders "Orders" : cart to paid order
+  biz cart "Cart" : holds items before checkout
+  biz checkout "Checkout" : turns a cart into an order and asks billing to charge it
+    | Reserves stock first, then charges; a failed charge releases the reservation.
+    @ app/orders/checkout.ex:40
+  biz order_store "Order store" : source of truth for order state
+
+biz billing "Billing" : invoices and payment
+  biz invoice "Invoice" : only it may mark an order invoiced
+  biz payment "Payment" : talks to the payment provider
+  biz refund_policy "Refund policy" : who may be refunded, and how much
+  + biz refund "Refund" : customer-initiated refund, not built yet
+
+biz fulfil "Fulfilment" : picks, packs and ships
+  biz stock "Stock" : counts and reservations per warehouse
+  biz shipping "Shipping" : label and carrier handling
+
+ext stripe "Stripe" : card payments
+ext carrier "Carrier API" : parcel carrier
+
+# who uses what
+cart -> auth : check session
+checkout -> cart : read items
+checkout -> stock : reserve
+checkout -> payment : charge
+checkout -> order_store : save order
+payment -> stripe : create charge
+payment -> ledger : post entry
+invoice -> ledger : post entry
+invoice -> order_store : mark invoiced
+order_store ~> events : order.changed
+invoice ~> events : invoice.created
+events ~> notify : send receipt
+shipping -> carrier : create label
+shipping -> stock : release reservation
+fulfil ~> events : parcel.shipped
+orders -> auth : check session
+billing -> auth : check session
+
+flow place_order "Place an order" : the happy path, cart to confirmation email
+  checkout -> cart : read items
+  checkout -> stock : reserve items
+  checkout -> payment : charge card
+  payment -> ledger : post entry
+  checkout -> order_store : save order
+  order_store -> events : order.changed
+  events -> notify : send receipt
+
+flow ship_order "Ship an order"
+  fulfil -> stock : pick
+  shipping -> carrier : create label
+  fulfil -> events : parcel.shipped
+
+refund -> ledger : post reversal
+refund -> refund_policy : check rules
+refund -> payment : refund the charge

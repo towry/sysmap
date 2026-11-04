@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<script>
+// Set the theme before first paint: the saved choice, else the system setting.
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("sysmap-theme"); } catch (e) {}
+  if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+<style>
+/* Palette from obsidian.md/help/install: white and near-black pages, purple accent, hairline
+   #e4e4e4 / #333 borders. The light accent is a little deeper than theirs (#8a5cf5 is 4.3:1 on
+   white, this is 4.9:1), and the kind and state colours are this tool's own. */
+:root{
+  --bg:#ffffff;--card:#fafafa;--bg2:#f3f3f3;--ui:#e4e4e4;--ui2:#d6d6d6;--ui3:#bdbdbd;
+  --tx:#222222;--tx2:#5c5c5c;--tx3:#a3a3a3;
+  --core:#1a7f77;--core-tx:#16706a;--biz:#c2570c;--biz-tx:#a64a0a;--ext:#5c5c5c;
+  --new:#26803a;--chg:#c9420c;--accent:#7d4ff0;--focus:#1b6ef3;--node:#ffffff;--edge:#8b8b8b;
+  --sans:ui-sans-serif,-apple-system,"SF Pro Text","PingFang SC","Noto Sans CJK SC",InterVariable,Inter,"Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+:root[data-theme=dark]{
+  --bg:#101010;--card:#151515;--bg2:#1c1c1c;--ui:#333333;--ui2:#444444;--ui3:#5a5a5a;
+  --tx:#dadada;--tx2:#b3b3b3;--tx3:#777777;
+  --core:#3fb3a8;--core-tx:#4cc2b7;--biz:#e8903f;--biz-tx:#eb9f58;--ext:#b3b3b3;
+  --new:#5fb878;--chg:#ef6c4d;--accent:#a68af9;--focus:#5b9bff;--node:#1c1c1c;--edge:#6b6b6b;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:15px/1.55 var(--sans);color:var(--tx);background:var(--bg);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
+  caret-color:var(--accent);color-scheme:light}
+:root[data-theme=dark] body{color-scheme:dark}
+*{scrollbar-width:thin;scrollbar-color:var(--ui3) transparent}
+::selection{background:color-mix(in srgb,var(--accent) 28%,transparent)}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--accent);cursor:pointer;text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+.ic{width:14px;height:14px;flex:none}
+.mono{font-family:var(--mono)}
+
+#app{display:grid;grid-template-columns:204px minmax(0,1fr) 320px;height:100vh}
+
+/* sidebar */
+#side{overflow:auto;border-right:1px solid var(--ui);padding:14px 8px 14px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.switch{position:relative;flex:none;width:46px;height:24px;border:1px solid var(--ui2);border-radius:12px;background:transparent;cursor:pointer;color:var(--tx2);transition:border-color .12s}
+.switch:hover{border-color:var(--ui3)}
+.switch .ic{position:absolute;top:4px;width:14px;height:14px}
+.switch .knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--tx);transition:transform .15s}
+:root[data-theme=dark] .switch .knob{transform:translateX(22px)}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);border-radius:5px;padding:0 8px;min-height:30px;color:var(--tx2);font-size:13px;background:var(--bg);transition:border-color .12s}
+.search:hover,.search:focus-within{border-color:var(--ui3)}
+.search input{flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--tx)}
+.search input::placeholder{color:var(--tx2)}
+.search kbd{font:11px var(--mono);color:var(--tx2);border:1px solid var(--ui2);border-radius:4px;padding:0 5px}
+#warn{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);background:transparent;border-radius:5px;min-height:28px;padding:0 8px;color:var(--chg);cursor:pointer;text-align:left;font-size:12.5px}
+[hidden]{display:none!important} /* the author rules for .btn etc. would otherwise show hidden elements */
+.group{font-size:12px;font-weight:650;color:var(--tx2);margin:10px 0 0}
+.orow{display:flex;align-items:center;gap:5px;min-height:27px;font-size:13px;padding-right:6px;cursor:pointer;white-space:nowrap;border-radius:6px;position:relative;transition:background-color .12s,color .12s}
+.orow:hover{background:color-mix(in srgb,var(--tx) 6%,transparent)}
+.orow:focus-visible,.frow:focus-visible{outline-offset:-2px}
+[data-go],[data-scope],[data-flow],[data-enter]{cursor:pointer}
+.orow.sel{color:var(--accent);font-weight:600}
+.orow.sel::before{content:"";position:absolute;left:-1px;top:2px;bottom:2px;width:2px;background:var(--accent);border-radius:1px}
+.orow .caret{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;color:var(--tx2);flex:none}
+.orow .caret .ic{transition:transform .12s}
+.orow .caret.open .ic{transform:rotate(90deg)}
+.orow .t{overflow:hidden;text-overflow:ellipsis;flex:1}
+.orow .n{color:var(--tx2);font-size:12px;font-weight:400}
+.kids-rule{margin-left:6px;padding-left:7px;border-left:1px solid var(--ui2)}
+.dot{width:7px;height:7px;border-radius:2px;flex:none;background:var(--ext)}
+.dot.core{background:var(--core)}.dot.biz{background:var(--biz)}
+#impactList:not(:empty){padding-bottom:8px;margin-bottom:6px;border-bottom:1px solid var(--ui3)}
+.irow.sub{padding-left:14px}
+.irow .hint{color:var(--tx2);font-size:12px;overflow:hidden;text-overflow:ellipsis;flex:none;max-width:90px}
+.why li{margin-bottom:6px}
+.ptree{margin:6px 0 2px;font-size:13px}
+.ptree .lv{margin-left:6px;padding-left:10px;border-left:1px solid var(--ui3)}
+.ptree .row{padding:2px 0}
+.ptree .root{font-weight:600}
+.why .chain{color:var(--tx2);font-size:12.5px}
+.why .chain b{color:var(--tx);font-weight:600}
+.frow{display:flex;gap:6px;align-items:center;min-height:27px;font-size:13px;padding:0 6px;border-radius:6px;cursor:pointer;color:var(--tx);transition:background-color .12s}
+.frow:hover{background:color-mix(in srgb,var(--tx) 6%,transparent)}
+.frow.sel{color:var(--accent);font-weight:600}
+.frow .n{margin-left:auto;color:var(--tx2);font-size:12px;font-weight:400}
+
+/* page */
+#page{display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 12px}
+#banner{display:none;border:1px solid var(--ui2);border-radius:8px;padding:6px 10px;margin-bottom:8px;font-size:13px;background:var(--bg2)}
+#banner.on{display:block}
+#banner.err{border-color:var(--chg)}
+#top{margin-bottom:8px}
+#crumbs{display:flex;gap:2px;align-items:center;font-size:12.5px;color:var(--tx2);height:22px;overflow:hidden;white-space:nowrap} /* always present: its height must not depend on the level */
+#crumbs a{padding:1px 4px;border-radius:4px;color:var(--tx2)}
+#crumbs a:hover{color:var(--tx);text-decoration:none;background:var(--bg2)}
+#crumbs .sep{display:inline-flex;color:var(--tx3)}
+#crumbs b{font-weight:500;color:var(--tx);padding:1px 4px}
+.titlerow{display:flex;align-items:center;gap:12px;min-width:0}
+.navbtns{display:flex;gap:4px;flex:none}
+.navbtns .btn{min-height:28px;width:28px}
+.btn:disabled{opacity:.35;cursor:default}
+.btn:disabled:hover{background:var(--bg);border-color:var(--ui2)}
+h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:0;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lead{color:var(--tx2);font-size:14px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stats{color:var(--tx2);font-size:12.5px;flex:none;margin-left:auto}
+#card{flex:1;min-height:300px;display:flex;flex-direction:column;position:relative;border:1px solid var(--ui);background:var(--card);border-radius:8px;overflow:hidden}
+#tools{display:flex;gap:4px;align-items:center;font-size:13px;color:var(--tx2)}
+#tools .btn{min-height:28px;padding:0 8px;border-color:transparent;background:transparent}
+#tools .btn.icon{width:28px;padding:0}
+#tools .btn:hover{background:var(--bg2);border-color:var(--ui2)}
+#tools .btn[aria-pressed=true]{background:var(--bg2);border-color:var(--ui3);color:var(--tx)}
+#hops{display:inline-flex;gap:2px;margin-right:4px}
+#tools output{min-width:40px;text-align:center;font-size:12.5px}
+.btn{display:inline-flex;gap:6px;align-items:center;justify-content:center;border:1px solid var(--ui2);background:var(--bg);border-radius:5px;padding:0 10px;min-height:32px;cursor:pointer;color:var(--tx);transition:background-color .12s,border-color .12s}
+.btn:hover{background:var(--bg2);border-color:var(--ui3)}
+.btn:active{transform:scale(.96)}
+.btn{position:relative}
+.btn::after{content:"";position:absolute;inset:-4px}
+.btn.icon{padding:0;width:32px}
+.btn.ghost{border-color:transparent;background:transparent}
+#viewport{flex:1;position:relative;overflow:hidden;touch-action:none}
+#canvas{position:absolute;left:0;top:0}
+#areas{position:absolute;left:0;top:0}
+.area{position:absolute;box-sizing:border-box;border:1px solid var(--ui3);border-radius:12px;background:color-mix(in srgb,var(--tx) 3%,transparent);pointer-events:none}
+.area span{position:absolute;left:12px;top:4px;font-size:12px;font-weight:650;color:var(--tx2);max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.cardfoot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:5px 12px;font-size:12px;color:var(--tx2);border-top:1px solid var(--ui)}
+.cardfoot .lg{display:inline-flex;gap:6px;align-items:center}
+.cardfoot i.cnt{width:auto;height:auto;min-width:15px;border-radius:8px;border:1px solid var(--ui3);background:var(--bg2);font-style:normal;font-size:11px;line-height:13px;text-align:center;color:var(--tx)}
+.cardfoot i{width:11px;height:11px;border-radius:3px;border:1.5px solid;display:inline-block}
+.cardfoot #tools{margin-left:auto}
+
+/* graph */
+.edge{fill:none;stroke:var(--edge)}
+.edge.hot{stroke:var(--tx)}
+#ar path{fill:var(--edge)}#arh path{fill:var(--tx)}
+.pill{fill:var(--bg);stroke:var(--ui3)}
+.pill.step{fill:var(--tx);stroke:var(--tx)}
+.pilltx{font-size:12px;fill:var(--tx);text-anchor:middle}
+.pilltx.step{fill:var(--bg)}
+.node{--k:var(--ext);position:absolute;border:1px solid color-mix(in srgb,var(--k) 60%,var(--card));border-radius:8px;
+  background:color-mix(in srgb,var(--k) 9%,var(--node));padding:9px 12px;cursor:pointer;overflow:hidden;
+  transition:opacity .15s,background-color .12s,border-color .12s}
+.node.core{--k:var(--core)}.node.biz{--k:var(--biz)}
+.node.ext{border-style:dashed}
+.node:hover{background:color-mix(in srgb,var(--k) 15%,var(--node))}
+.node.ghost{opacity:.8;border-style:dashed}
+.node.dim,.node.ghost.dim{opacity:.45}
+.node.m-new{outline:2px solid var(--new);outline-offset:2px}
+.node.m-chg{outline:2px solid var(--chg);outline-offset:2px}
+/* --inv is 1/zoom (set from the panzoom event), so the ring keeps its on-screen weight when the map is zoomed out */
+.node.sel{outline:calc(2px * var(--inv,1)) solid var(--accent);outline-offset:calc(2px * var(--inv,1));box-shadow:0 0 0 calc(7px * var(--inv,1)) color-mix(in srgb,var(--accent) 22%,transparent),0 calc(8px * var(--inv,1)) calc(22px * var(--inv,1)) color-mix(in srgb,var(--accent) 30%,transparent)}
+.node.sel .title{color:var(--accent)}
+.node.centre:not(.sel){outline:calc(2px * var(--inv,1)) dashed var(--accent);outline-offset:calc(2px * var(--inv,1))}
+.node:focus-visible{outline-color:var(--focus);outline-offset:4px}
+.node .head{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
+.node .title{font-weight:650;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .desc{font-size:12.5px;line-height:1.4;color:var(--tx2);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty}
+.node .foot{position:absolute;left:12px;right:12px;bottom:7px;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden;font-size:12.5px;color:var(--tx2)}
+.node .kind{font-weight:650}
+.node.core .kind{color:var(--core-tx)}.node.biz .kind{color:var(--biz-tx)}
+.node .kids{margin-left:auto;display:inline-flex;gap:4px;align-items:center}
+.tag{font-size:12px;font-weight:600;line-height:18px;padding:0 6px;border-radius:4px;white-space:nowrap;flex:none}
+.tag.new{background:var(--new);color:var(--bg)}
+.tag.chg{background:var(--chg);color:var(--bg)}
+.tag.centre{background:var(--accent);color:var(--bg)}
+.tag.hit{border:1px solid var(--chg);color:var(--chg);line-height:16px}
+
+/* detail rail */
+#detail{overflow:auto;padding:30px 24px 28px 8px}
+#detail h2{font-size:20px;font-weight:700;line-height:1.3;margin:6px 0 2px;text-wrap:balance}
+#detail h3{font-size:13px;font-weight:650;margin:24px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--ui)}
+#detail h3 span{color:var(--tx2);font-weight:400}
+#detail .id{font:12px var(--mono);color:var(--tx2)}
+#detail p{margin:8px 0;text-wrap:pretty}
+#detail .kindline{font-size:13px;font-weight:650}
+#detail .kindline.core{color:var(--core-tx)}#detail .kindline.biz{color:var(--biz-tx)}#detail .kindline.ext{color:var(--ext)}
+#detail .detail{white-space:pre-wrap;background:var(--bg2);border-radius:8px;padding:9px 12px;font-size:13.5px}
+#detail ul{list-style:none;margin:0;padding:0}
+#detail li{padding:4px 0}
+.lab{color:var(--tx2);font-size:12.5px}
+#detail code{font:12.5px var(--mono);background:var(--bg2);padding:2px 6px;border-radius:4px}
+.verdict{border-radius:8px;padding:10px 12px;margin:8px 0;font-size:13.5px;background:var(--bg2)}
+.verdict b{display:block;font-size:13px;margin-bottom:2px}
+.verdict.extension{background:color-mix(in srgb,var(--new) 16%,var(--bg))}
+.verdict.contained{background:color-mix(in srgb,var(--biz) 16%,var(--bg))}
+.verdict.wide{background:color-mix(in srgb,var(--chg) 16%,var(--bg))}
+.step{display:flex;gap:10px;padding:6px 0;cursor:pointer}
+.step b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--tx);color:var(--bg);text-align:center;font-size:12px;line-height:22px}
+.empty{color:var(--tx2);padding:30px;text-align:center}
+
+#menu{display:none;margin-left:auto;margin-right:8px;min-height:28px}
+@media (max-width:1100px){
+  #menu{display:inline-flex}
+  body:not(.menu-open) #outline,body:not(.menu-open) #flows,body:not(.menu-open) #impactList{display:none}
+  #side{max-height:none}
+  #app{grid-template-columns:1fr;grid-template-rows:auto auto auto;height:auto}
+  #side{padding:12px 14px 8px}
+  #page{padding:10px 12px;min-height:640px}
+  #detail{padding:8px 20px 28px}
+}
+@media (max-width:700px){
+  .cardfoot{gap:6px 10px}
+  .node .foot .dep{display:none}
+  .cardfoot #tools{margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  h1{font-size:19px;max-width:100%}
+  .titlerow{flex-wrap:wrap;gap:2px 10px}
+  #stats{margin-left:0}
+}
+.btn,#tools output,.cardfoot .lg{white-space:nowrap}
+/* Changing level plays in two beats: the old cards fade out, then the new ones come in one after
+   another, left to right, the edges last. Going in starts a little smaller, going out a little larger. */
+.node.leaving{opacity:0!important;transform:scale(.97);transition:opacity .12s ease-in,transform .12s ease-in}
+#edges.leaving,#areas.leaving{opacity:0;transition:opacity .1s ease-in}
+.node.enter{animation:nodeIn .26s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i) * 42ms)}
+#edges.enter{animation:fadeIn .3s ease-out both;animation-delay:var(--edge-delay)}
+#areas.enter{animation:fadeIn .25s ease-out both}
+@keyframes nodeIn{from{opacity:0;transform:translateY(6px) scale(var(--from,1))}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body__LIVE__>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-back" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path d="M3.5 8h9M8 3.5v9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-fit" viewBox="0 0 16 16"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.5 14 13H2L8 2.5zM8 6.5v3M8 11.3v.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-in" viewBox="0 0 16 16"><path d="M4 3.5v5A2.5 2.5 0 0 0 6.5 11H12M9.5 8 12.5 11l-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10.2 10.2 3.3 3.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.25 9.6A5.5 5.5 0 0 1 6.4 2.75a5.5 5.5 0 1 0 6.85 6.85z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+</defs></svg>
+<div id="app">
+  <nav id="side" aria-label="导航">
+    <div class="brand"><b id="sysTitle"></b><button class="btn" id="menu" aria-expanded="false">目录</button><button id="theme" class="switch" role="switch" aria-label="深色主题"></button></div>
+    <label class="search"><svg class="ic" width="14" height="14"><use href="#i-search"/></svg><input id="search" placeholder="搜索节点" aria-label="搜索节点"><kbd>/</kbd></label>
+    <button id="warn" hidden></button>
+    <div id="impactList"></div>
+    <div id="outline"></div>
+    <div id="flows"></div>
+  </nav>
+  <main id="page">
+    <div id="banner"></div>
+    <div id="top">
+      <div id="crumbs"></div>
+      <div class="titlerow"><span class="navbtns"><button class="btn icon" id="back" aria-label="后退 (Alt+←)" title="后退 (Alt+←)"><svg class="ic" width="14" height="14"><use href="#i-back"/></svg></button><button class="btn icon" id="fwd" aria-label="前进 (Alt+→)" title="前进 (Alt+→)"><svg class="ic" width="14" height="14"><use href="#i-chev"/></svg></button></span><h1 id="scopeTitle"></h1><span id="lead"></span><span id="stats"></span></div>
+    </div>
+    <section id="card">
+      <div id="viewport"><div id="canvas"><div id="areas"></div><svg id="edges"></svg><div id="nodes"></div></div></div>
+      <div class="cardfoot"><span class="lg"><i style="border-color:var(--core);background:color-mix(in srgb,var(--core) 14%,var(--node))"></i>通用边界</span><span class="lg"><i style="border-color:var(--biz);background:color-mix(in srgb,var(--biz) 14%,var(--node))"></i>业务节点</span><span class="lg"><i style="border-color:var(--ext);border-style:dashed"></i>外部系统</span><span class="lg"><i style="border-color:var(--new)"></i>计划新增</span><span class="lg"><i style="border-color:var(--chg)"></i>计划修改</span><span class="lg" title="线上的数字是这两块之间的依赖条数;线从依赖方指向被依赖方"><i class="cnt">2</i>线上数字 = 依赖条数</span><div id="tools">        <span id="hops" hidden><button class="btn" data-hops="1">1 步</button><button class="btn" data-hops="2">2 步</button><button class="btn" data-hops="3">3 步</button></span>        <button class="btn" id="impactOff" hidden>退出这个视图</button>        <button class="btn" id="outer" aria-pressed="false" title="同时画出这一层之外、与它有关联的节点">层外关联</button>        <button class="btn icon" data-zoom="-" aria-label="缩小"><svg class="ic" width="14" height="14"><use href="#i-minus"/></svg></button><output id="zlabel"></output><button class="btn icon" data-zoom="+" aria-label="放大"><svg class="ic" width="14" height="14"><use href="#i-plus"/></svg></button><button class="btn" data-zoom="auto" title="默认大小;图太宽时缩小(不小于 75%)">默认</button><button class="btn" data-zoom="fit" title="把整张图放进窗口"><svg class="ic" width="14" height="14"><use href="#i-fit"/></svg>适应</button>      </div></div>
+    </section>
+  </main>
+  <aside id="detail"></aside>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>__DAGRE__</script>
+<script>__PANZOOM__</script>
+<script>
+"use strict";
+const KIND = {core: "通用", biz: "业务", ext: "外部"};
+let W = 216, H = 100;
+const PAD = 16;
+const isNarrow = () => innerWidth < 700;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const ic = (name, size = 14) => `<svg class="ic" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
+
+let D, byId, state = {scope: "", sel: "", flow: "", impact: "", hood: "", hops: 2}, open = new Set(), query = "";
+// The zoom stays between ZMIN and ZMAX, so one level never ends up too small to read or so large
+// that a single node fills the card.
+const ZMIN = 0.25, ZMAX = 1.5;
+const minFit = () => (innerWidth < 700 ? 0.58 : 0.75); // the automatic fit never goes below this
+let pz, viewMode = "auto", lastLayoutKey = "", suppressClick = false, lastSize = {width: 0, height: 0}, showOuter = false, lastClick = {id: "", at: 0};
+
+function setData(data) {
+  D = data;
+  byId = new Map(D.nodes.map((n) => [n.id, n]));
+  if (state.scope && !byId.has(state.scope)) state.scope = "";
+  if (state.sel && !byId.has(state.sel)) state.sel = "";
+  if (state.flow && !D.flows.some((f) => f.id === state.flow)) state.flow = "";
+  if (state.impact && state.impact !== "*" && !D.impact.items.some((it) => it.id === state.impact && it.dependents.length)) state.impact = "";
+  if (state.hood && !byId.has(state.hood)) state.hood = "";
+}
+const special = () => state.impact || state.hood; // a cross-level view is on: it ignores the current level
+const viewKey = () => state.impact ? "i:" + state.impact : state.hood ? "h:" + state.hood + ":" + state.hops : "";
+
+const par = (id) => (byId.get(id) || {}).parent || "";
+function anc(id) { const a = []; for (let p = par(id); p; p = par(p)) a.push(p); return a; }
+const inSub = (id, root) => id === root || anc(id).includes(root);
+const roots = () => D.nodes.filter((n) => !n.parent).map((n) => n.id);
+const names = (ids) => ids.map((i) => esc(byId.get(i).title)).join("、");
+
+// The node that stands for `id` in the map of the current scope: the scope's child that
+// contains it, or, for something outside the scope, the sibling-level node it lives in.
+function lift(id) {
+  const scope = state.scope;
+  if (!scope) { const a = anc(id); return a.length ? a[a.length - 1] : id; }
+  if (id !== scope && inSub(id, scope)) { let c = id; while (par(c) !== scope) c = par(c); return c; }
+  if (id === scope || anc(scope).includes(id)) return null;
+  const A = new Set(["", ...anc(scope)]);
+  let c = id; while (!A.has(par(c))) c = par(c);
+  return c;
+}
+
+// The impact view ignores levels: it draws the planned node(s) and every node the change reaches,
+// with the dependency lines along the chains, so a path that crosses areas is visible in one picture.
+function impactView() {
+  const ids = new Set(), agg = new Map();
+  for (const it of D.impact.items) {
+    if (state.impact !== "*" && it.id !== state.impact) continue;
+    ids.add(it.id);
+    for (const chain of Object.values(it.paths || {})) {
+      for (let i = 0; i + 1 < chain.length; i++) {
+        const a = chain[i], b = chain[i + 1], k = a + "\u0000" + b;
+        ids.add(a); ids.add(b);
+        if (agg.has(k)) continue;
+        const real = D.edges.filter((e) => inSub(e.from, a) && (inSub(e.to, b) || inSub(b, e.to)));
+        agg.set(k, {a, b, async: real.length > 0 && real.every((e) => e.async), count: Math.max(real.length, 1), labels: real.filter((e) => e.label).map((e) => e.label)});
+      }
+    }
+  }
+  return {ids: [...ids], ghost: new Set(), edges: [...agg.values()]};
+}
+
+// The neighbourhood view: a node, then everything within `hops` dependency steps of it, in either
+// direction and on any level. A container stands for its whole subtree.
+function neighbours(x) {
+  const out = new Set();
+  for (const e of D.edges) {
+    const from = inSub(e.from, x), to = inSub(e.to, x);
+    if (from === to) continue;
+    const other = from ? e.to : e.from;
+    if (!inSub(x, other)) out.add(other); // an ancestor of x is not a neighbour
+  }
+  return [...out];
+}
+function hoodView() {
+  const seen = [state.hood];
+  let frontier = [state.hood];
+  for (let d = 1; d <= state.hops; d++) {
+    // When a container and one of its children are both neighbours only one can be drawn; the more
+    // specific node wins, so the order of the edges in the file never changes the picture.
+    const found = [...new Set(frontier.flatMap(neighbours))].sort((a, b) => anc(b).length - anc(a).length || (a < b ? -1 : 1));
+    const next = [];
+    for (const y of found) {
+      if (seen.some((s) => inSub(y, s) || inSub(s, y))) continue;
+      seen.push(y); next.push(y);
+    }
+    frontier = next;
+  }
+  const stand = (id) => seen.find((s) => inSub(id, s)); // the visible node that stands for this one
+  const agg = new Map();
+  for (const e of D.edges) {
+    const a = stand(e.from), b = stand(e.to);
+    if (!a || !b || a === b) continue;
+    const k = a + "\u0000" + b, g = agg.get(k) || {a, b, async: true, count: 0, labels: []};
+    g.async = g.async && e.async; g.count++; if (e.label) g.labels.push(e.label);
+    agg.set(k, g);
+  }
+  return {ids: seen, ghost: new Set(), edges: [...agg.values()]};
+}
+
+function buildView() {
+  if (state.impact) return impactView();
+  if (state.hood) return hoodView();
+  const scope = state.scope;
+  const real = scope ? byId.get(scope).children.slice() : roots();
+  const agg = new Map();
+  for (const e of D.edges) {
+    const a = lift(e.from), b = lift(e.to);
+    if (!a || !b || a === b) continue;
+    const k = a + "\u0000" + b;
+    const g = agg.get(k) || {a, b, async: true, count: 0, labels: []};
+    g.async = g.async && e.async; // dashed only when every dependency between the pair is async
+    g.count++; if (e.label) g.labels.push(e.label);
+    agg.set(k, g);
+  }
+  // Nodes from other levels are drawn only when asked for. Selecting a node never adds or moves
+  // cards, so clicking around does not rearrange the map.
+  const outside = (id) => scope && !inSub(id, scope);
+  const edges = [...agg.values()].filter((g) => showOuter || !(outside(g.a) || outside(g.b)));
+  const ids = new Set(real);
+  for (const g of edges) { ids.add(g.a); ids.add(g.b); }
+  return {ids: [...ids], ghost: new Set([...ids].filter(outside)), edges};
+}
+
+// dagre does the layering, crossing reduction and edge routing (vendored, MIT).
+// `groups` (optional) maps a node to the area box it sits in; dagre then lays the boxes out too.
+function layout(ids, edges, dir, groups) {
+  const g = new dagre.graphlib.Graph({compound: !!groups});
+  g.setGraph({rankdir: dir, nodesep: 26, ranksep: isNarrow() ? 60 : dir === "LR" ? 112 : 84, marginx: PAD, marginy: PAD});
+  g.setDefaultEdgeLabel(() => ({}));
+  for (const id of ids) g.setNode(id, {width: W, height: H});
+  for (const e of edges) g.setEdge(e.a, e.b);
+  if (groups) for (const a of new Set(groups.values())) { g.setNode("area:" + a, {}); }
+  if (groups) for (const [id, a] of groups) g.setParent(id, "area:" + a);
+  dagre.layout(g);
+  const pos = new Map(), points = new Map();
+  for (const id of ids) { const n = g.node(id); pos.set(id, {x: n.x - W / 2, y: n.y - H / 2}); }
+  for (const e of edges) points.set(e.a + "\u0000" + e.b, g.edge(e.a, e.b).points);
+  const boxes = groups ? [...new Set(groups.values())].map((a) => { const c = g.node("area:" + a); return {id: a, x: c.x - c.width / 2, y: c.y - c.height / 2, w: c.width, h: c.height}; }) : [];
+  const size = g.graph();
+  return {pos, points, boxes, width: size.width, height: size.height};
+}
+
+// A smooth path through dagre's route points, and where to put the label.
+function route(pts) {
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    d += ` Q${pts[i].x},${pts[i].y} ${(pts[i].x + pts[i + 1].x) / 2},${(pts[i].y + pts[i + 1].y) / 2}`;
+  }
+  const last = pts[pts.length - 1];
+  const half = (pts.length - 1) / 2, p = pts[Math.floor(half)], q = pts[Math.ceil(half)];
+  return {d: d + ` L${last.x},${last.y}`, mid: {x: (p.x + q.x) / 2, y: (p.y + q.y) / 2}};
+}
+
+// The point a fraction t of the way along a route, so a label can slide along its own line.
+function pointAt(pts, t) {
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); seg.push(l); total += l; }
+  let at = total * t;
+  for (let i = 0; i < seg.length; i++) {
+    if (at <= seg[i] || i === seg.length - 1) { const f = seg[i] ? Math.min(at / seg[i], 1) : 0; return {x: pts[i].x + (pts[i + 1].x - pts[i].x) * f, y: pts[i].y + (pts[i + 1].y - pts[i].y) * f}; }
+    at -= seg[i];
+  }
+  return pts[0];
+}
+const hits = (a, b) => a.x < b.x + b.w + b.g && b.x < a.x + a.w + b.g && a.y < b.y + b.h + b.g && b.y < a.y + a.h + b.g; // b.g: the clear gap b needs around it
+
+function flowEdges() {
+  const f = D.flows.find((x) => x.id === state.flow);
+  const m = new Map();
+  if (!f) return m;
+  f.steps.forEach((s, i) => {
+    const a = lift(s.from), b = lift(s.to);
+    if (!a || !b || a === b) return;
+    const k = a + "\u0000" + b;
+    m.set(k, (m.get(k) || []).concat(i + 1));
+  });
+  return m;
+}
+
+const textW = (t) => [...t].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 12 : 7), 0);
+// Labels must fit the gap between two columns, or the next node covers them.
+function fitLabel(t, max = 92) {
+  if (textW(t) <= max) return t;
+  let out = "";
+  for (const c of t) { if (textW(out + c + "…") > max) break; out += c; }
+  return out + "…";
+}
+
+function renderMap() {
+  W = isNarrow() ? 170 : 216; // phones: narrower nodes so a level fits the screen
+  const v = buildView();
+  // Left-to-right reads best; when that is too wide for the card, stack top-to-bottom instead
+  // of shrinking the text, because the card scrolls vertically without losing anything.
+  // A cross-level view puts each top-level area in a box, so a chain that crosses areas reads at a glance.
+  let groups = null;
+  if (special()) {
+    const g = new Map();
+    for (const id of v.ids) { const a = anc(id); if (a.length) g.set(id, a[a.length - 1]); }
+    if (new Set(g.values()).size >= 2) groups = g;
+  }
+  let lay = isNarrow() ? layout(v.ids, v.edges, "TB", groups) : layout(v.ids, v.edges, "LR", groups); // a portrait phone reads top to bottom
+  if (!isNarrow() && lay.width > ($("viewport").clientWidth - 2) / minFit()) {
+    const stacked = layout(v.ids, v.edges, "TB", groups);
+    if (stacked.width < lay.width) lay = stacked;
+  }
+  const {pos, points, boxes, width, height} = lay;
+  const sel = state.sel ? (special() ? (v.ids.includes(state.sel) ? state.sel : null) : lift(state.sel)) : null;
+  const flowHot = flowEdges();
+  const hotNodes = new Set();
+  for (const k of flowHot.keys()) k.split("\u0000").forEach((x) => hotNodes.add(x));
+  const affected = new Set(D.impact.affected);
+  const cvs = $("canvas");
+  lastSize = {width: Math.max(width, 400), height: Math.max(height, 200)};
+  cvs.style.width = lastSize.width + "px"; cvs.style.height = lastSize.height + "px";
+  // Selecting a node redraws the cards but does not change the layout, so the view is placed again
+  // only when the set of cards or their size changed. Otherwise a click would nudge the map.
+  const layoutKey = `${viewKey()}|${v.ids.join("|")}|${width}x${height}|${isNarrow()}`;
+  if (layoutKey !== lastLayoutKey) { lastLayoutKey = layoutKey; if (viewMode !== "free") applyView(); }
+  $("areas").innerHTML = boxes.map((b) => `<div class="area" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><span>${esc(byId.get(b.id).title)}</span></div>`).join("");
+  const svg = $("edges");
+  svg.setAttribute("width", cvs.style.width); svg.setAttribute("height", cvs.style.height);
+
+  let paths = '<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker><marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>';
+  // Labels sit on their own line; when two edges meet at one node their midpoints collide,
+  // so each label tries other places along the line and takes the first one that is free.
+  let pills = ""; // drawn after every line, so no line is drawn across a label
+  const taken = v.ids.map((id) => ({x: pos.get(id).x, y: pos.get(id).y, w: W, h: H, g: 2}));
+  for (const e of v.edges) {
+    const pts = points.get(e.a + "\u0000" + e.b);
+    const r = route(pts);
+    const steps = flowHot.get(e.a + "\u0000" + e.b);
+    const hot = steps || special() || (sel && (e.a === sel || e.b === sel));
+    const faded = (state.flow && !steps) || (!state.flow && sel && !hot);
+    const w = (1.5 + Math.log2(e.count) * 0.8) * (hot ? 1.4 : 1);
+    paths += `<path class="edge${hot ? " hot" : ""}" d="${r.d}" stroke-width="${w}" ${e.async ? 'stroke-dasharray="7 5"' : ""} opacity="${faded ? 0.22 : 1}" marker-end="url(#${hot ? "arh" : "ar"})"/>`;
+    let text = "";
+    if (steps) text = steps.join(",");
+    else if (hot) text = e.count > 1 ? e.count + " 条依赖" : (e.labels[0] || "");
+    else if (e.count > 1 && !sel && !state.flow) text = String(e.count);
+    if (text) {
+      const shown = fitLabel(text), cls = steps ? " step" : "", pw = textW(shown) + 12;
+      let at = r.mid, fewest = Infinity;
+      // Along the line first; when the line is shorter than the labels, step just above or below it.
+      for (const [t, dy] of [[0.5, 0], [0.4, 0], [0.6, 0], [0.3, 0], [0.7, 0], [0.2, 0], [0.8, 0], [0.5, 24], [0.5, -24], [0.5, 48], [0.5, -48]]) {
+        const m = pointAt(pts, t), c = {x: m.x, y: m.y + dy};
+        const n = taken.filter((b) => hits({x: c.x - pw / 2, y: c.y - 10, w: pw, h: 20}, b)).length;
+        if (n < fewest) { fewest = n; at = c; }
+        if (!n) break;
+      }
+      taken.push({x: at.x - pw / 2, y: at.y - 10, w: pw, h: 20, g: 10});
+      pills += `<g><title>${esc(text)}</title><rect class="pill${cls}" x="${at.x - pw / 2}" y="${at.y - 10}" width="${pw}" height="20" rx="10"/><text class="pilltx${cls}" x="${at.x}" y="${at.y + 4}">${esc(shown)}</text></g>`;
+    }
+  }
+  svg.innerHTML = paths + pills;
+
+  let html = "";
+  const rank = new Map([...v.ids].sort((a, b) => pos.get(a).x + pos.get(a).y - (pos.get(b).x + pos.get(b).y)).map((id, i) => [id, i]));
+  const anim = enterAnim; enterAnim = null;
+  for (const id of v.ids) {
+    const n = byId.get(id), p = pos.get(id);
+    const cls = ["node", n.kind];
+    if (anim) cls.push("enter");
+    if (n.mark) cls.push(n.mark === "+" ? "m-new" : "m-chg");
+    if (v.ghost.has(id)) cls.push("ghost");
+    if (id === sel) cls.push("sel");
+    if (state.hood === id) cls.push("centre");
+    if ((state.flow && !hotNodes.has(id)) || (!state.flow && !special() && sel && id !== sel && !v.edges.some((e) => (e.a === sel && e.b === id) || (e.b === sel && e.a === id)))) cls.push("dim");
+    const centre = state.hood === id ? '<span class="tag centre">中心</span>' : "";
+    const tag = centre + (n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新增" : "修改"}</span>` : (affected.has(id) ? `<span class="tag hit" title="${esc(causeText(id))}">受影响</span>` : ""));
+    const dep = n.kind === "core" && n.fanin ? `<span class="dep">被 ${n.fanin} 个依赖</span>` : "";
+    const outer = v.ghost.has(id) ? "<span>· 层外</span>" : special() && !boxes.length && par(id) ? `<span>· ${esc(byId.get(par(id)).title)}</span>` : "";
+    const kids = n.children.length ? `<span class="kids" title="包含 ${n.children.length} 个子节点,点这里或双击进入" data-kids>${ic("in")} ${n.children.length}</span>` : "";
+    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.id)}"><div class="head"><span class="title">${esc(n.title)}</span>${tag}</div><div class="desc">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}${kids}</div></div>`;
+  }
+  const edgesEl = $("edges"), areasEl = $("areas");
+  edgesEl.classList.remove("leaving", "enter"); areasEl.classList.remove("leaving", "enter");
+  if (anim) { void areasEl.getBoundingClientRect(); areasEl.classList.add("enter"); }
+  if (anim) { edgesEl.style.setProperty("--edge-delay", Math.min(v.ids.length, 10) * 42 + 120 + "ms"); void edgesEl.getBoundingClientRect(); edgesEl.classList.add("enter"); }
+  $("nodes").innerHTML = html || '<div class="empty">这一层还没有节点</div>';
+}
+
+function renderPageHead() {
+  $("impactOff").hidden = !special(); $("outer").hidden = !!special(); $("hops").hidden = !state.hood;
+  document.querySelectorAll("[data-hops]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.hops) === state.hops)));
+  if (state.hood) {
+    $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>邻域视图</b>`;
+    $("scopeTitle").textContent = `「${byId.get(state.hood).title}」周围 ${state.hops} 步`;
+    $("lead").textContent = "不分层级;线从依赖方指向被依赖方,框是所在区域";
+    $("lead").hidden = isNarrow(); // no room for it beside the title on a phone
+    $("stats").textContent = `${buildView().ids.length} 个节点`;
+    return;
+  }
+  if (state.impact) {
+    const one = state.impact !== "*" ? byId.get(state.impact) : null;
+    $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>影响视图</b>`;
+    $("scopeTitle").textContent = one ? `「${one.title}」的影响范围` : "全部计划改动的影响范围";
+    $("lead").textContent = "线从依赖方指向被依赖方,框是所在区域";
+    $("lead").hidden = isNarrow();
+    $("stats").textContent = `${D.impact.affected.length} 个已有节点受影响`;
+    return;
+  }
+  const scope = state.scope ? byId.get(state.scope) : null;
+  const chain = [{id: "", t: D.title || "系统"}, ...anc(state.scope).reverse().concat(state.scope ? [state.scope] : []).map((i) => ({id: i, t: byId.get(i).title}))];
+  $("crumbs").innerHTML = chain.map((c, i) => (i === chain.length - 1 ? `<b>${esc(c.t)}</b>` : `<a tabindex="0" data-scope="${esc(c.id)}">${esc(c.t)}</a><span class="sep">${ic("chev")}</span>`)).join("");
+  $("scopeTitle").textContent = scope ? scope.title : (D.title || "系统地图");
+  $("lead").textContent = scope ? scope.desc : D.desc;
+  $("lead").hidden = !$("lead").textContent;
+  const subtree = scope ? D.nodes.filter((n) => inSub(n.id, scope.id)).length - 1 : D.nodes.length;
+  $("stats").textContent = scope ? `包含 ${subtree} 个节点` : `${D.nodes.length} 个节点 · ${D.edges.length} 条依赖 · ${D.flows.length} 个业务流程`;
+}
+
+// Pan and zoom come from @panzoom/panzoom (vendored, MIT): drag the background, pinch, or hold
+// Ctrl/Cmd and scroll. The library moves #canvas with a CSS transform about its centre; this code
+// only decides where the canvas sits for "default" and "fit", and how the wheel is used.
+function place(scale, centreX, centreY) {
+  const vp = $("viewport"), w = lastSize.width, h = lastSize.height;
+  // With the transform origin at the canvas centre c, its top-left lands at c*(1-s) + s*x.
+  const at = (len, view, centre) => { const left = (len / 2) * (scale - 1) / scale; return centre ? left + (view / scale - len) / 2 : left; };
+  pz.zoom(scale, {animate: false, force: true});
+  pz.pan(at(w, vp.clientWidth, centreX), at(h, vp.clientHeight, centreY), {animate: false, force: true});
+}
+function applyView() {
+  const vp = $("viewport"), vw = vp.clientWidth - 2, vh = vp.clientHeight - 2, w = lastSize.width, h = lastSize.height;
+  if (viewMode === "overview") { // a cross-level view is for seeing the whole picture; on a phone not smaller than readable
+    const fit = Math.min(1, Math.max(ZMIN, Math.min(vw / w, vh / h))), s = Math.max(fit, isNarrow() ? 0.5 : ZMIN);
+    place(s, s === fit, s === fit);
+  }
+  else if (viewMode === "fit") place(Math.min(ZMAX, Math.max(ZMIN, Math.min(vw / w, vh / h))), true, true);
+  else if (viewMode === "auto") place(Math.min(1, Math.max(minFit(), vw / w)), false, false);
+}
+function zoomBy(factor, clientX, clientY) {
+  viewMode = "free";
+  const r = $("viewport").getBoundingClientRect();
+  pz.zoomToPoint(pz.getScale() * factor, {clientX: clientX ?? r.left + r.width / 2, clientY: clientY ?? r.top + r.height / 2}, {animate: false});
+}
+function setupPanzoom() {
+  const cvs = $("canvas");
+  pz = Panzoom(cvs, {canvas: true, minScale: ZMIN, maxScale: ZMAX, cursor: "grab", excludeClass: "node", animate: false});
+  // Panzoom pans to its start position (0,0) one tick after it is created, which would undo the
+  // placement of the first render; place the view again once that has happened.
+  setTimeout(() => { if (viewMode !== "free") applyView(); }, 0);
+  let start = null;
+  cvs.addEventListener("panzoomstart", () => { start = pz.getPan(); });
+  cvs.addEventListener("panzoomend", () => {
+    const p = pz.getPan();
+    if (start && Math.hypot(p.x - start.x, p.y - start.y) * pz.getScale() > 4) {
+      viewMode = "free";
+      suppressClick = true; // the release of a drag is not a click on whatever is under it
+      setTimeout(() => { suppressClick = false; }, 0);
+    }
+    start = null;
+  });
+  cvs.addEventListener("panzoomchange", (ev) => { $("zlabel").textContent = Math.round(ev.detail.scale * 100) + "%"; cvs.style.setProperty("--inv", String(Math.min(2.5, Math.max(1, 1 / ev.detail.scale)).toFixed(3))); });
+  $("viewport").addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    viewMode = "free";
+    if (ev.ctrlKey || ev.metaKey) zoomBy(Math.exp(Math.max(-25, Math.min(25, -ev.deltaY)) * 0.01), ev.clientX, ev.clientY); // pinch on a trackpad arrives as Ctrl+wheel
+    else { const p = pz.getPan(), s = pz.getScale(); pz.pan(p.x - ev.deltaX / s, p.y - ev.deltaY / s, {animate: false, force: true}); }
+  }, {passive: false});
+}
+
+function renderSide() {
+  const q = query.trim().toLowerCase();
+  const match = (n) => !q || (n.id + " " + n.title + " " + n.desc).toLowerCase().includes(q);
+  const keep = new Map();
+  const visit = (id) => { const n = byId.get(id); let any = match(n); for (const c of n.children) any = visit(c) || any; keep.set(id, any); return any; };
+  roots().forEach(visit);
+  const walk = (id) => {
+    if (!keep.get(id)) return "";
+    const n = byId.get(id);
+    const isOpen = q ? true : open.has(id);
+    const caret = n.children.length ? `<span class="caret ${isOpen ? "open" : ""}" data-caret="${esc(id)}">${ic("chev")}</span>` : '<span class="caret"></span>';
+    const mk = n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span>` : "";
+    const hit = !n.mark && causes(id).length ? `<span class="tag hit" title="${esc(causeText(id))}">波及</span>` : "";
+    const fan = n.kind === "core" && n.fanin ? `<span class="n" title="${n.fanin} 个节点依赖它">${n.fanin}</span>` : "";
+    let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}">${caret}<span class="dot ${n.kind}"></span><span class="t">${esc(n.title)}</span>${mk}${hit}${fan}</div>`;
+    if (isOpen && n.children.length) html += `<div class="kids-rule">${n.children.map(walk).join("")}</div>`;
+    return html;
+  };
+  $("outline").innerHTML = roots().map(walk).join("") || '<div class="empty">没有匹配的节点</div>';
+  const items = D.impact.items.filter((it) => it.dependents.length);
+  const row = (id, extra, cls) => `<div class="orow irow ${cls} ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}"><span class="dot ${byId.get(id).kind}"></span><span class="t">${esc(byId.get(id).title)}</span>${extra}</div>`;
+  $("impactList").innerHTML = items.length ? `<div class="group">本次改动波及 ${D.impact.affected.length} 个已有节点 <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; return row(d, `<span class="hint" title="${esc(via.map((x) => byId.get(x).title).join(" → "))}">${via.length > 2 ? "经 " + esc(byId.get(via[1]).title) : "直接"}</span>`, "sub"); }).join("")).join("") : "";
+  $("flows").innerHTML = D.flows.length ? `<div class="group">业务流程</div>` + D.flows.map((f) => `<div class="frow ${state.flow === f.id ? "sel" : ""}" tabindex="0" data-flow="${esc(f.id)}"><span class="t">${esc(f.title)}</span><span class="n">${f.steps.length} 步</span></div>`).join("") : "";
+}
+
+// Who a node is affected by: each planned node that reaches it, with the chain of nodes between.
+function causes(id) {
+  return D.impact.items.filter((it) => it.paths && it.paths[id]).map((it) => ({it, path: it.paths[id]}));
+}
+const markWord = (it) => it.mark === "+" ? "新增" : "修改";
+function causeText(id) {
+  return causes(id).map(({it, path}) => path.length > 2
+    ? `${markWord(it)}「${byId.get(it.id).title}」,经过「${path.slice(1, -1).map((x) => byId.get(x).title).join("」「")}」波及到它`
+    : `${it.mark === "+" ? "依赖新增的" : "直接依赖被修改的"}「${byId.get(it.id).title}」`).join(";");
+}
+function whyBox(id) {
+  const cs = causes(id);
+  if (!cs.length) return "";
+  const lis = cs.map(({it, path}) => {
+    const chain = path.map((x, i) => i === 0 ? `<b>${esc(byId.get(x).title)}</b>` : `<a tabindex="0" data-go="${esc(x)}">${esc(byId.get(x).title)}</a>`).join(" → ");
+    const how = path.length > 2 ? `间接,隔了 ${path.length - 2} 个节点` : it.mark === "+" ? "直接依赖新节点,要一起改" : "直接依赖";
+    return `<li><span class="tag ${it.mark === "+" ? "new" : "chg"}">${markWord(it)}</span> ${link(it.id)}<div class="chain">${chain}<br>${how}</div></li>`;
+  }).join("");
+  return `<h3>为什么受影响</h3><ul class="why">${lis}</ul>`;
+}
+const flat = (t) => t.toLowerCase().replace(/[\s_.-]+/g, "");
+const link = (id) => {
+  const n = byId.get(id);
+  const away = par(id) === state.scope ? "" : ` <span class="lab" title="点击会切换到这个节点所在的层">↗ ${par(id) ? esc(byId.get(par(id)).title) : "顶层"}</span>`;
+  return `<a tabindex="0" data-go="${esc(id)}">${esc(n.title)}</a>${flat(n.title) === flat(id) ? "" : ` <span class="id">${esc(id)}</span>`}${away}`;
+};
+
+const LEVEL = {extension: "只是扩展", contained: "影响局部", wide: "影响通用边界"};
+function verdictText(im) {
+  const s = im.summary, parts = [];
+  if (s.changedCore.length) parts.push(`改动了通用节点 ${names(s.changedCore)},会波及 ${im.affected.length} 个已有节点`);
+  if (s.newCore.length) parts.push(`新增通用节点 ${names(s.newCore)},它会成为新的共用点`);
+  if (s.changedBiz.length) parts.push(`改动了业务节点 ${names(s.changedBiz)},会波及 ${im.affected.length} 个已有节点`);
+  if (s.changedExt.length) parts.push(`改动了外部系统 ${names(s.changedExt)},会波及 ${im.affected.length} 个已有节点`);
+  if (s.newOther.length) parts.push(`新增 ${s.newOther.length} 个节点,复用 ${s.reused} 个通用节点${parts.length || s.wired.length ? "" : ",不改动任何已有节点"}`);
+  if (s.wired.length) parts.push(`已有节点 ${names(s.wired)} 依赖新节点,也要一起改`);
+  return parts.join(";");
+}
+
+function noteText(n) {
+  if (n.code === "cross-area-biz") return `注意:依赖了其他区域「${esc(byId.get(n.area).title)}」里的业务节点 ${link(n.node)}`;
+  return "注意:没有声明任何依赖,看不出它复用了哪些通用节点";
+}
+
+// The nodes a planned node reaches, drawn as a tree: each node sits under the node it depends on.
+function pathTree(it) {
+  const kids = new Map();
+  for (const chain of Object.values(it.paths || {})) {
+    for (let i = 0; i + 1 < chain.length; i++) {
+      const up = chain[i + 1];
+      if (!kids.has(up)) kids.set(up, new Set());
+      kids.get(up).add(chain[i]);
+    }
+  }
+  if (!kids.size) return "";
+  const hit = new Set(it.dependents);
+  const draw = (id, depth) => [...(kids.get(id) || [])].sort().map((c) => {
+    const n = byId.get(c);
+    const tag = hit.has(c) ? "" : `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> `;
+    return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${depth === 0 ? ' <span class="lab">直接依赖</span>' : ""}</div>${draw(c, depth + 1)}</div>`;
+  }).join("");
+  return `<div class="ptree"><div class="row root">${esc(byId.get(it.id).title)} <span class="lab">${it.mark === "+" ? "新增" : "修改"}</span></div>${draw(it.id, 0)}</div>`;
+}
+
+function impactBox(only) {
+  const im = D.impact;
+  if (!im.items.length) return "";
+  const rows = (only ? [only] : im.items).map((it) => {
+    const parts = [];
+    if (it.reusesCore.length) parts.push(`复用通用节点:${it.reusesCore.map(link).join("、")}`);
+    if (it.dependsBiz.length) parts.push(`依赖业务节点:${it.dependsBiz.map(link).join("、")}`);
+    if (it.dependsExt.length) parts.push(`依赖外部系统:${it.dependsExt.map(link).join("、")}`);
+    if (it.dependents.length) parts.push(`${it.mark === "+" ? "要一起改的已有节点" : "会波及的已有节点"} ${it.dependents.length} 个,依赖路径:${pathTree(it)}<button class="btn" data-impact="${esc(it.id)}">在画布上看影响路径</button>`);
+    if (it.flows.length) parts.push(`涉及流程:${it.flows.map((f) => esc((D.flows.find((x) => x.id === f) || {title: f}).title)).join("、")}`);
+    parts.push(...it.notes.map(noteText));
+    return `<li><span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新增" : "修改"}</span> ${link(it.id)}<div class="lab">${parts.join("<br>")}</div></li>`;
+  }).join("");
+  return `<h3>计划改动的影响</h3><div class="verdict ${im.level}"><b>${LEVEL[im.level] || ""}</b>${verdictText(im)}</div><ul>${rows}</ul>`;
+}
+
+function renderDetail() {
+  const el = $("detail");
+  const n = byId.get(state.sel);
+  if (state.flow && !n) {
+    const f = D.flows.find((x) => x.id === state.flow);
+    el.innerHTML = `<h2>${esc(f.title)}</h2><div class="id">flow ${esc(f.id)}</div>${f.desc ? `<p>${esc(f.desc)}</p>` : ""}<h3>步骤 <span>${f.steps.length}</span></h3>${f.steps.map((s, i) => { const inner = lift(s.from) === lift(s.to) ? ' <span class="lab">(节点内部)</span>' : ""; return `<div class="step" tabindex="0" data-go="${esc(s.to)}"><b>${i + 1}</b><div>${esc(byId.get(s.from).title)} → ${esc(byId.get(s.to).title)}${inner}<div class="lab">${esc(s.note)}</div></div></div>`; }).join("")}<p><button class="btn" id="clearFlow">取消流程高亮</button></p>`;
+    return;
+  }
+  if (!n) {
+    const c = {core: 0, biz: 0, ext: 0}; D.nodes.forEach((x) => c[x.kind]++);
+    const hubs = D.nodes.filter((x) => x.kind === "core" && x.fanin).sort((a, b) => b.fanin - a.fanin).slice(0, 5);
+    el.innerHTML = `<h2>总览</h2><p class="lab">${c.core} 个通用节点,${c.biz} 个业务节点,${c.ext} 个外部系统。</p>${impactBox()}${hubs.length ? `<h3>被依赖最多的通用节点</h3><ul>${hubs.map((h) => `<li>${link(h.id)} <span class="lab">被 ${h.fanin} 个依赖</span></li>`).join("")}</ul>` : ""}<p class="lab">单击图里的节点看详情,双击进入下一层,Esc 返回上一层。拖动空白处平移,双指捏合或按住 Ctrl/⌘ 滚动缩放,+ - 0 键缩放。</p>`;
+    return;
+  }
+  const out = new Map(), inn = new Map();
+  for (const e of D.edges) {
+    if (inSub(e.from, n.id) && !inSub(e.to, n.id)) { const g = out.get(e.to) || []; if (e.label) g.push(e.label); out.set(e.to, g); }
+    if (inSub(e.to, n.id) && !inSub(e.from, n.id)) { const g = inn.get(e.from) || []; if (e.label) g.push(e.label); inn.set(e.from, g); }
+  }
+  const lst = (m) => [...m].map(([id, labs]) => `<li>${link(id)} <span class="lab">${KIND[byId.get(id).kind]}</span>${labs.length ? `<div class="lab">${esc(labs.join(" · "))}</div>` : ""}</li>`).join("");
+  const flows = D.flows.filter((f) => f.steps.some((s) => inSub(s.from, n.id) || inSub(s.to, n.id)));
+  const item = D.impact.items.find((i) => i.id === n.id);
+  const path = anc(n.id).reverse();
+  el.innerHTML = `<div class="kindline ${n.kind}">${KIND[n.kind]}${n.kind === "core" ? "边界" : n.kind === "biz" ? "节点" : "系统"} ${n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "计划新增" : "计划修改"}</span>` : ""}</div><h2>${esc(n.title)}</h2><div class="id">${esc(n.id)}${path.length ? " · 位于 " + path.map((p) => esc(byId.get(p).title)).join(" › ") : ""}</div>${n.desc ? `<p>${esc(n.desc)}</p>` : ""}${neighbours(n.id).length ? `<p><button class="btn" data-hood="${esc(n.id)}">看周围的相关节点</button></p>` : ""}${whyBox(n.id)}${item ? impactBox(item) : ""}${n.detail.length ? `<h3>详细说明</h3><div class="detail">${esc(n.detail.join("\n"))}</div>` : ""}${n.refs.length ? `<h3>代码位置</h3><ul>${n.refs.map((r) => `<li><code>${esc(r)}</code></li>`).join("")}</ul>` : ""}${n.children.length ? `<h3>包含的子节点 <span>${n.children.length}</span></h3><ul>${n.children.map((c) => `<li>${link(c)} <span class="lab">${KIND[byId.get(c).kind]}</span></li>`).join("")}</ul><p><button class="btn" data-enter="${esc(n.id)}">${ic("in")} 进入这一层</button></p>` : ""}${out.size ? `<h3>依赖 <span>${out.size}</span></h3><ul>${lst(out)}</ul>` : ""}${inn.size ? `<h3>被依赖 <span>${inn.size}</span></h3><ul>${lst(inn)}</ul>` : ""}${flows.length ? `<h3>参与的流程</h3><ul>${flows.map((f) => `<li><a tabindex="0" data-flow="${esc(f.id)}">${esc(f.title)}</a></li>`).join("")}</ul>` : ""}`;
+}
+
+function renderChrome() {
+  $("sysTitle").textContent = D.title || "系统地图";
+  document.title = (state.scope ? byId.get(state.scope).title + " · " : "") + (D.title || "系统地图");
+  const dark = document.documentElement.dataset.theme === "dark";
+  // The icon sits on the side the knob has left, like the switch on obsidian.md.
+  $("theme").innerHTML = `<span class="knob"></span><svg class="ic" style="${dark ? "left" : "right"}:5px" width="14" height="14"><use href="#i-${dark ? "moon" : "sun"}"/></svg>`;
+  $("theme").setAttribute("aria-checked", String(dark));
+  $("theme").title = dark ? "切换到浅色" : "切换到深色";
+  const w = $("warn"), errs = D.diags.filter((d) => d.level === "error").length;
+  w.hidden = !D.diags.length;
+  w.innerHTML = `${ic("warn")} ${errs ? "文件有错误" : "文件有提示"} · ${D.diags.length}`;
+  const b = $("banner");
+  b.classList.toggle("err", errs > 0);
+  if (!D.diags.length) b.classList.remove("on"); else if (errs) b.classList.add("on");
+  b.innerHTML = (errs ? "文件有错误,页面显示的是上一个可用版本。" : "提示:") + "<br>" + D.diags.slice(0, 8).map((d) => `第 ${d.line} 行 [${d.level}] ${esc(d.msg)}`).join("<br>");
+  $("outer").setAttribute("aria-pressed", String(showOuter));
+}
+
+// Moving to another level or flow is a step in the browser history, so Back and Forward work
+// (and so do the buttons next to the title). Selecting a node only replaces the current step.
+let shownScope = "", shownKey = "", shownFlow = "", navIndex = 0, navMax = 0, fromHistory = false;
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
+let firstRender = true, pendingRender = 0, pendingFromHistory = false, enterAnim = null;
+// Is a strictly inside b? The empty scope is the root, which contains everything else.
+const within = (a, b) => (b === "" ? a !== "" : a !== b && inSub(a, b));
+function renderAll() {
+  if (pendingRender) { pendingFromHistory = pendingFromHistory || fromHistory; return; } // a render already waits for the fade-out; it reads the latest state
+  if ((state.scope !== shownScope || viewKey() !== shownKey) && !firstRender && !calm.matches) {
+    document.querySelectorAll(".node").forEach((n) => n.classList.add("leaving"));
+    $("edges").classList.add("leaving"); $("areas").classList.add("leaving");
+    pendingFromHistory = fromHistory; // the popstate handler clears its flag before this timer fires
+    pendingRender = setTimeout(() => { pendingRender = 0; fromHistory = pendingFromHistory; renderNow(); fromHistory = false; }, 130);
+    return;
+  }
+  renderNow();
+}
+function renderNow() {
+  const moved = state.scope !== shownScope || state.flow !== shownFlow || viewKey() !== shownKey;
+  if (state.scope !== shownScope || viewKey() !== shownKey) {
+    if (!firstRender && !calm.matches) enterAnim = {from: viewKey() !== shownKey ? 1 : within(state.scope, shownScope) ? 0.93 : within(shownScope, state.scope) ? 1.05 : 1};
+    shownScope = state.scope; shownKey = viewKey(); viewMode = special() ? "overview" : "auto"; // a zoom chosen for one level does not follow you into another
+  }
+  firstRender = false;
+  shownFlow = state.flow;
+  // Everything is redrawn, so remember which row or node had the keyboard focus.
+  const held = document.activeElement.closest && document.activeElement.closest(".node, .orow, .frow");
+  const keep = held && {cls: [...held.classList].find((c) => ["node", "orow", "frow"].includes(c)), attr: held.dataset.id ? "id" : "flow", val: held.dataset.id || held.dataset.flow};
+  renderChrome(); renderPageHead(); renderMap(); renderSide(); renderDetail(); syncHash(moved && !fromHistory);
+  $("back").disabled = navIndex <= 0; $("fwd").disabled = navIndex >= navMax;
+  if (keep && document.activeElement === document.body) {
+    const el = document.querySelector(`.${keep.cls}[data-${keep.attr}="${CSS.escape(keep.val)}"]`);
+    if (el) el.focus();
+  }
+}
+
+function syncHash(push) {
+  const p = new URLSearchParams();
+  if (state.scope) p.set("s", state.scope);
+  if (state.sel) p.set("n", state.sel);
+  if (state.flow) p.set("f", state.flow);
+  if (state.impact) p.set("i", state.impact);
+  if (state.hood) { p.set("h", state.hood); if (state.hops !== 2) p.set("k", state.hops); }
+  const h = p.toString() ? "#" + p.toString() : "";
+  // Sandboxed frames (an embedded view) may refuse to change the URL; the page still works without it.
+  try {
+    if (location.hash !== h) {
+      const url = location.pathname + location.search + h;
+      if (push) { navIndex++; navMax = navIndex; history.pushState({i: navIndex}, "", url); } else history.replaceState({i: navIndex}, "", url);
+    }
+  } catch (e) { /* no shareable link or history in this frame */ }
+}
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  state = {scope: p.get("s") || "", sel: p.get("n") || "", flow: p.get("f") || "", impact: p.get("i") || "", hood: p.get("h") || "", hops: Math.min(3, Math.max(1, parseInt(p.get("k"), 10) || 2))};
+  setData(D);
+}
+
+function reveal(id) {
+  if (special() && buildView().ids.includes(id)) { state.sel = id; return; } // already on the canvas: just select it
+  state.impact = ""; state.hood = "";
+  state.scope = par(id); state.sel = id; viewMode = "auto"; anc(id).forEach((a) => open.add(a));
+} // jumping to a node shows the whole level, so the node is never off screen
+function enter(id) { state.impact = ""; state.hood = ""; state.scope = id; state.sel = ""; open.add(id); anc(id).forEach((a) => open.add(a)); }
+function lca(ids) {
+  const paths = ids.map((i) => anc(i).reverse());
+  let out = "";
+  for (let k = 0; paths.every((p) => p[k] && p[k] === paths[0][k]); k++) out = paths[0][k];
+  return out;
+}
+function pickFlow(id) {
+  state.flow = state.flow === id ? "" : id; state.sel = ""; state.impact = ""; state.hood = "";
+  const f = D.flows.find((x) => x.id === state.flow);
+  if (f && f.steps.length) {
+    state.scope = lca(f.steps.flatMap((s) => [s.from, s.to]));
+  }
+  renderAll();
+}
+
+document.addEventListener("click", (ev) => {
+  if (suppressClick) { suppressClick = false; return; }
+  const t = ev.target;
+  const caret = t.closest("[data-caret]");
+  if (caret) { const id = caret.dataset.caret; open.has(id) ? open.delete(id) : open.add(id); renderSide(); return; }
+  const row = t.closest(".orow");
+  if (row) { reveal(row.dataset.id); renderAll(); return; }
+  if (t.closest("#back")) { try { history.back(); } catch (e) {} return; }
+  if (t.closest("#fwd")) { try { history.forward(); } catch (e) {} return; }
+  const im = t.closest("[data-impact]");
+  if (im) { state.impact = im.dataset.impact; state.hood = ""; state.flow = ""; state.sel = im.dataset.impact === "*" ? "" : im.dataset.impact; renderAll(); return; }
+  const hd = t.closest("[data-hood]");
+  if (hd) { state.hood = hd.dataset.hood; state.impact = ""; state.flow = ""; state.sel = state.hood; renderAll(); return; }
+  const hp = t.closest("[data-hops]");
+  if (hp) { state.hops = Number(hp.dataset.hops); renderAll(); return; }
+  if (t.closest("#impactOff")) { state.impact = ""; state.hood = ""; renderAll(); return; }
+  const node = t.closest(".node");
+  if (node && t.closest("[data-kids]")) { enter(node.dataset.id); renderAll(); return; }
+  if (node) {
+    // Selecting redraws the nodes, so the browser would lose the second click of a double click.
+    // Detect it here: the same node clicked again within 400ms goes inside it.
+    const id = node.dataset.id, now = Date.now();
+    if (lastClick.id === id && now - lastClick.at < 400 && byId.get(id).children.length) { lastClick = {id: "", at: 0}; enter(id); }
+    else { lastClick = {id, at: now}; state.sel = id; }
+    renderAll(); return;
+  }
+  if (t.closest("#menu")) { const on = document.body.classList.toggle("menu-open"); $("menu").setAttribute("aria-expanded", String(on)); return; }
+  if (t.closest("#outer")) { showOuter = !showOuter; $("outer").setAttribute("aria-pressed", String(showOuter)); renderMap(); return; }
+  const zb = t.closest("[data-zoom]");
+  if (zb) { const k = zb.dataset.zoom; if (k === "-") zoomBy(0.8); else if (k === "+") zoomBy(1.25); else { viewMode = k; applyView(); } return; }
+  const go = t.closest("[data-go]");
+  if (go) { reveal(go.dataset.go); renderAll(); return; }
+  const sc = t.closest("[data-scope]");
+  if (sc) { state.scope = sc.dataset.scope; state.sel = ""; state.impact = ""; state.hood = ""; renderAll(); return; }
+  const en = t.closest("[data-enter]");
+  if (en) { enter(en.dataset.enter); renderAll(); return; }
+  const fl = t.closest("[data-flow]");
+  if (fl) { pickFlow(fl.dataset.flow); return; }
+  if (t.closest("#clearFlow")) { state.flow = ""; renderAll(); return; }
+  if (t.closest("#warn")) { $("banner").classList.toggle("on"); return; }
+  if (t.closest("#theme")) {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("sysmap-theme", next); } catch (e) {}
+    renderChrome(); return;
+  }
+  if (t.closest("#viewport") && !t.closest(".node")) { state.sel = ""; renderAll(); }
+});
+document.addEventListener("keydown", (ev) => {
+  const typing = document.activeElement.tagName === "INPUT";
+  if (ev.altKey && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) { ev.preventDefault(); try { ev.key === "ArrowLeft" ? history.back() : history.forward(); } catch (e) {} return; }
+  if (!typing && (ev.key === "+" || ev.key === "=")) { zoomBy(1.25); return; }
+  if (!typing && (ev.key === "-" || ev.key === "_")) { zoomBy(0.8); return; }
+  if (!typing && ev.key === "0") { viewMode = "auto"; applyView(); return; }
+  if (ev.key === "/" && !typing) { ev.preventDefault(); $("search").focus(); return; }
+  if (ev.key === "Escape") {
+    if (document.activeElement === $("search")) { $("search").value = ""; query = ""; $("search").blur(); renderSide(); }
+    else if (special()) { state.impact = ""; state.hood = ""; renderAll(); }
+    else if (state.flow) { state.flow = ""; renderAll(); }
+    else if (state.scope) { state.scope = par(state.scope); state.sel = ""; renderAll(); }
+    return;
+  }
+  const active = document.activeElement;
+  if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") {
+    const row = active.closest && active.closest(".orow");
+    if (row && byId.get(row.dataset.id).children.length) {
+      ev.preventDefault();
+      ev.key === "ArrowRight" ? open.add(row.dataset.id) : open.delete(row.dataset.id);
+      renderSide();
+      const again = document.querySelector(`.orow[data-id="${CSS.escape(row.dataset.id)}"]`);
+      if (again) again.focus();
+    }
+    return;
+  }
+  if ((ev.key === "Enter" || ev.key === " ") && active.matches && active.matches("[data-go],[data-scope],[data-flow],[data-enter]") && !active.matches(".frow")) {
+    ev.preventDefault(); active.click(); return;
+  }
+  if (ev.key === " " && active.classList && active.classList.contains("node")) { ev.preventDefault(); }
+  if (ev.key === "Enter" || (ev.key === " " && active.classList && active.classList.contains("node"))) {
+    if (document.activeElement === $("search")) {
+      const q = query.trim().toLowerCase();
+      const hit = D.nodes.find((n) => (n.id + " " + n.title + " " + n.desc).toLowerCase().includes(q));
+      if (q && hit) { reveal(hit.id); renderAll(); }
+      return;
+    }
+    const el = document.activeElement.closest && document.activeElement.closest("[data-id],[data-flow]");
+    if (!el) return;
+    if (el.dataset.flow) { pickFlow(el.dataset.flow); return; }
+    const id = el.dataset.id;
+    const isMapNode = el.classList.contains("node");
+    if (isMapNode && state.sel === id && byId.get(id).children.length) enter(id); else if (isMapNode) state.sel = id; else reveal(id);
+    renderAll();
+    const next = document.querySelector(`${isMapNode ? ".node" : ".orow"}[data-id="${CSS.escape(id)}"]`);
+    if (next) next.focus();
+  }
+});
+$("search").addEventListener("input", (ev) => { query = ev.target.value; renderSide(); });
+let wasNarrow = isNarrow();
+window.addEventListener("resize", () => { if (isNarrow() !== wasNarrow) { wasNarrow = isNarrow(); renderMap(); } else if (viewMode !== "free") applyView(); });
+window.addEventListener("popstate", (ev) => {
+  navIndex = (ev.state && ev.state.i) || 0; // our own position, to enable or disable the buttons
+  readHash(); fromHistory = true; renderAll(); fromHistory = false;
+});
+
+setData(JSON.parse($("data").textContent));
+try { navIndex = navMax = (history.state && history.state.i) || 0; } catch (e) {}
+setupPanzoom();
+roots().forEach((r) => open.add(r));
+if (location.hash.length > 1) readHash();
+if (state.sel) anc(state.sel).forEach((a) => open.add(a));
+renderAll();
+
+if (document.body.dataset.live) {
+  setInterval(async () => {
+    try {
+      const d = await (await fetch("/data.json", {cache: "no-store"})).json();
+      if (d.version !== D.version || JSON.stringify(d.diags) !== JSON.stringify(D.diags)) { setData(d); renderAll(); }
+    } catch (e) { /* server stopped; keep what is shown */ }
+  }, 1500);
+}
+</script>
+</body>
+</html>
