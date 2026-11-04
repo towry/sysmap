@@ -93,6 +93,19 @@ func TestDiagnosticLinesQuietsWarningsOutsideCheck(t *testing.T) {
 	if got := diagnosticLines("/tmp/a.smap", false, nil); len(got) != 0 {
 		t.Fatalf("no diagnostics = %q, want no lines", got)
 	}
+
+	three := []smap.Diag{
+		{File: "/tmp/a.smap", Line: 1, Level: "error", Msg: "same"},
+		{File: "/tmp/a.smap", Line: 2, Level: "error", Msg: "same"},
+		{File: "/tmp/a.smap", Line: 3, Level: "error", Msg: "same"},
+	}
+	if got := diagnosticLines("/tmp/a.smap", true, three); len(got) != 3 || strings.Contains(strings.Join(got, "\n"), "more like this") {
+		t.Fatalf("three identical diagnostics must not collapse: %q", got)
+	}
+	four := append(append([]smap.Diag(nil), three...), smap.Diag{File: "/tmp/a.smap", Line: 4, Level: "error", Msg: "same"})
+	if got := diagnosticLines("/tmp/a.smap", true, four); !strings.Contains(strings.Join(got, "\n"), "(and 1 more like this in /tmp/a.smap)") {
+		t.Fatalf("four identical diagnostics must collapse: %q", got)
+	}
 }
 
 func TestDiagnosticLinesCollapseRepeatedMessagesPerFile(t *testing.T) {
@@ -190,5 +203,26 @@ func TestRunStillPrintsErrorsAndCollapsesRepeats(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "(and 2 more like this in "+repeated+")") {
 		t.Fatalf("stderr lacks the collapse line:\n%s", errOut)
+	}
+}
+
+func TestFindCaveatsFlag(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "caveats.smap")
+	src := "biz a \"A\"\n  | unverified: no load test\nbiz b \"B\"\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := captureRun(t, "find", "--caveats", path)
+	if code != 0 || errOut != "" {
+		t.Fatalf("find --caveats = exit %d, stderr %q", code, errOut)
+	}
+	want := "a [biz] \"A\" " + path + ":1\n  unverified: no load test\n"
+	if out != want {
+		t.Fatalf("find --caveats = %q, want %q", out, want)
+	}
+	code, _, errOut = captureRun(t, "find", "--caveats", "word", path)
+	if code != 1 || !strings.Contains(errOut, "takes no search word") {
+		t.Fatalf("find --caveats with a word = exit %d, stderr %q", code, errOut)
 	}
 }

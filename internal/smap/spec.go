@@ -52,7 +52,9 @@ ext platform_pg "Postgres" : shared database
 
 reading the outline
   ←N     N nodes outside this one depend on it (a container and its child count once)
+  ?N     N unverified: or open: caveat lines on this node; see 'sysmap find --caveats'
   (+N below)   N descendants hidden by the depth limit; use 'sysmap show <id>' or -d to see them
+  show <id> reads a node; show <flow> prints a flow's steps with file:line.
 
 planning a change (impact shows up in the page and in 'sysmap impact')
 + biz refund "Refund" : new node, not built yet
@@ -62,9 +64,18 @@ planning a change (impact shows up in the page and in 'sysmap impact')
 deliberate dependency cycles
   check warns once per group of nodes that depend on each other in a cycle. If the cycle
   is intended, confirm it with a detail line on any node in the group:
+biz a "A"
   | cycle: both directions are required during the migration
   The text after "cycle:" must be non-empty; an empty "| cycle:" does not confirm it.
   Self-loops and edges between a container and its own child are reported separately.
+
+hedged claims (caveats)
+  A detail line starting with unverified: or open: followed by non-empty text marks a
+  caveat on that node, for example:
+biz a "A"
+  | unverified: no load test yet
+  'sysmap find --caveats' lists the nodes and their caveat lines; outline adds a trailing
+  ?N with N caveat lines on the node. These are reading aids, not warnings.
 
 rules checked by 'sysmap check'
   error  unknown node in an edge or flow step, duplicate id, bad indent

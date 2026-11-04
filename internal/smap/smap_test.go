@@ -1405,6 +1405,14 @@ func TestSpecLeavesExamplesAtColumnZero(t *testing.T) {
 			t.Errorf("relative example indentation changed: %q", line)
 		}
 	}
+	for _, block := range []string{
+		"\nbiz a \"A\"\n  | cycle: both directions are required during the migration\n",
+		"\nbiz a \"A\"\n  | unverified: no load test yet\n",
+	} {
+		if !strings.Contains(Spec, block) {
+			t.Errorf("example block is not at column 0 with a two-space detail: %q", block)
+		}
+	}
 }
 
 func TestIndentAndFlowDiagnosticsExplainTheFix(t *testing.T) {
@@ -1471,5 +1479,167 @@ func TestFindShowsTheFirstMatchingText(t *testing.T) {
 	}
 	if !strings.HasPrefix(snippet, "…") || !strings.HasSuffix(snippet, "…") {
 		t.Fatalf("clipped snippet should mark both cuts: %q", snippet)
+	}
+}
+
+func TestShowFlowPrintsTitleDescriptionAndSteps(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMapFile(t, dir, "flow.smap", `system "S"
+biz a "A"
+biz b "B"
+a -> b
+flow daily "Daily" : every day
+  a -> b : go
+`)
+	m := loadClean(t, path)
+	got, err := m.Show("daily")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "flow daily \"Daily\" (" + path + ":5)\n" +
+		"every day\n" +
+		"steps:\n" +
+		"  a -> b : go (" + path + ":6)\n"
+	if got != want {
+		t.Fatalf("show daily = %q, want %q", got, want)
+	}
+}
+
+func TestShowFlowWithoutDescriptionOrNote(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMapFile(t, dir, "flow.smap", `system "S"
+biz a "A"
+biz b "B"
+a -> b
+flow quiet "Quiet"
+  a -> b
+`)
+	m := loadClean(t, path)
+	got, err := m.Show("quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "flow quiet \"Quiet\" (" + path + ":5)\nsteps:\n  a -> b (" + path + ":6)\n"
+	if got != want {
+		t.Fatalf("show quiet = %q, want %q", got, want)
+	}
+}
+
+func TestShowQualifiedFlowFromMountedFile(t *testing.T) {
+	dir := t.TempDir()
+	child := writeMapFile(t, dir, "ml.smap", `system "ML"
+biz a "A"
+biz b "B"
+a -> b
+flow daily "Daily" : every day
+  a -> b : go
+`)
+	root := writeMapFile(t, dir, "root.smap", `core ml "ML"
+  mount ml.smap
+`)
+	m := loadClean(t, root)
+	got, err := m.Show("ml.daily")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "flow ml.daily \"Daily\" (" + child + ":5)\n" +
+		"every day\n" +
+		"steps:\n" +
+		"  ml.a -> ml.b : go (" + child + ":6)\n"
+	if got != want {
+		t.Fatalf("show ml.daily = %q, want %q", got, want)
+	}
+}
+
+func TestShowNodeWinsOverAFlowWithTheSameId(t *testing.T) {
+	m := mustParse(t, "biz daily \"Node\"\nbiz other \"Other\"\ndaily -> other\nflow daily \"Daily flow\" : f\n  daily -> other : go\n")
+	got, err := m.Show("daily")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "[biz] daily \"Node\"\n") {
+		t.Fatalf("show daily did not print the node:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "note: a flow with the same id also exists\n") {
+		t.Fatalf("show daily lacks the flow note:\n%s", got)
+	}
+}
+
+func TestShowUnknownIdMentionsNodesAndFlows(t *testing.T) {
+	m := mustParse(t, "biz a \"A\"\n")
+	_, err := m.Show("ghost")
+	if err == nil || !strings.Contains(err.Error(), "neither a node nor a flow") {
+		t.Fatalf("unknown id error = %v", err)
+	}
+}
+
+func TestCaveatLinesAndOutlineMarker(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMapFile(t, dir, "caveats.smap", `system "S"
+core dep "D"
+biz a "A" : has caveats
+  | unverified: no load test
+  | open: who owns it?
+  | detail without prefix
+dep -> a
+biz b "B"
+  | unverified:
+  | open:
+  | Unverified: uppercase is not a caveat
+`)
+	if got := caveatLines(&Node{Detail: []string{"open:   ", "unverified:\t"}}); len(got) != 0 {
+		t.Fatalf("whitespace-only caveats counted: %v", got)
+	}
+	m, diags := loadModel(t, path)
+	if HasErrors(diags) {
+		t.Fatalf("load diagnostics: %v", diags)
+	}
+	want := "a [biz] \"A\" " + path + ":3\n  unverified: no load test\n  open: who owns it?\n"
+	if got := m.FindCaveats(); got != want {
+		t.Fatalf("find --caveats = %q, want %q", got, want)
+	}
+	out, err := m.Outline("", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `[biz] a "A" ←1 ?2 — has caveats`) {
+		t.Fatalf("outline lacks the caveat marker:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, `[biz] b "B"`) && strings.Contains(line, "?") {
+			t.Fatalf("empty or uppercase caveat was counted: %s", line)
+		}
+	}
+}
+
+func TestCaveatsInMountedFile(t *testing.T) {
+	dir := t.TempDir()
+	child := writeMapFile(t, dir, "ml.smap", `system "ML"
+biz deploy "Deploy" : ships models
+  | unverified: not load tested
+  | open: rollout owner?
+`)
+	root := writeMapFile(t, dir, "root.smap", `core ml "ML"
+  mount ml.smap
+`)
+	m := loadClean(t, root)
+	want := "ml.deploy [biz] \"Deploy\" " + child + ":2\n  unverified: not load tested\n  open: rollout owner?\n"
+	if got := m.FindCaveats(); got != want {
+		t.Fatalf("find --caveats = %q, want %q", got, want)
+	}
+	out, err := m.Outline("ml", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `[biz] ml.deploy "Deploy" ?2 — ships models`) {
+		t.Fatalf("outline lacks the mounted caveat marker:\n%s", out)
+	}
+}
+
+func TestSpecDocumentsFlowsAndCaveats(t *testing.T) {
+	for _, want := range []string{"unverified:", "open:", "find --caveats", "show <flow>"} {
+		if !strings.Contains(Spec, want) {
+			t.Errorf("spec lacks %q", want)
+		}
 	}
 }

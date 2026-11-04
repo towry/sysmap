@@ -16,8 +16,9 @@ var version = "dev" // set with -ldflags "-X main.version=..."; go install build
 const usage = `sysmap: a system map an agent can maintain and a person can browse.
 
   sysmap outline [file] [-d N] [id]   tree of the system (default depth 2), or of one node
-  sysmap show <id> [file]             zoom into one node: details, children, dependencies, flows
+  sysmap show <id|flow> [file]        zoom into a node, or print a flow's steps
   sysmap find <query> [file]          search ids, titles, descriptions and detail lines
+  sysmap find --caveats [file]        list nodes with unverified: or open: caveats
   sysmap check [file] [--refs]        validate references, boundary rules and @ code refs
   sysmap impact [file] [--json]       reach of planned nodes (+ new, ~ changed)
   sysmap accept [file]                drop the + and ~ markers in every file once shipped
@@ -66,6 +67,7 @@ func run(args []string) int {
 	addr := fs.String("addr", "127.0.0.1:4317", "listen address")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	refs := fs.Bool("refs", false, "verify @ path[:line] references")
+	caveats := fs.Bool("caveats", false, "list nodes with unverified: or open: caveats")
 	positional, err := parseInterleaved(fs, rest)
 	if err != nil {
 		return 2
@@ -90,7 +92,11 @@ func run(args []string) int {
 	}
 	query := strings.Join(words, " ")
 	if cmd == "find" {
-		if query == "" {
+		if *caveats {
+			if query != "" {
+				return fail("find --caveats takes no search word")
+			}
+		} else if query == "" {
 			return fail("find needs a search word")
 		}
 	} else if cmd != "show" && cmd != "outline" && id != "" {
@@ -147,7 +153,7 @@ func run(args []string) int {
 		fmt.Print(text)
 	case "show":
 		if id == "" {
-			return fail("show needs a node id")
+			return fail("show needs a node or flow id")
 		}
 		text, err := m.Show(id)
 		if err != nil {
@@ -155,7 +161,11 @@ func run(args []string) int {
 		}
 		fmt.Print(text)
 	case "find":
-		fmt.Print(m.Find(query))
+		if *caveats {
+			fmt.Print(m.FindCaveats())
+		} else {
+			fmt.Print(m.Find(query))
+		}
 	case "impact":
 		imp := m.Impact()
 		if *asJSON {

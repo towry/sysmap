@@ -62,6 +62,9 @@ func (m *Model) Outline(root string, depth int) (string, error) {
 		if in := len(m.FanIn(id)); in > 0 {
 			fmt.Fprintf(&b, " ←%d", in)
 		}
+		if c := len(caveatLines(n)); c > 0 {
+			fmt.Fprintf(&b, " ?%d", c)
+		}
 		if n.Desc != "" {
 			fmt.Fprintf(&b, " — %s", clip(n.Desc, 70))
 		}
@@ -146,12 +149,16 @@ func where(file string, line int) string {
 }
 
 // Show prints everything about one node: the zoomed-in view. An id that a bind removed
-// still resolves, and so does the local stub name the mounted file used.
+// still resolves, and a flow id prints that flow's steps. A node wins when both share an id.
 func (m *Model) Show(id string) (string, error) {
 	id = m.resolve(id)
 	n := m.Nodes[id]
+	f := m.flowByID(id)
+	if n == nil && f == nil {
+		return "", fmt.Errorf("unknown id %q: neither a node nor a flow", id)
+	}
 	if n == nil {
-		return "", fmt.Errorf("unknown node %q", id)
+		return m.showFlow(f), nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s[%s] %s %q", m.mark(n), n.Kind, n.ID, n.Title)
@@ -205,7 +212,38 @@ func (m *Model) Show(id string) (string, error) {
 	if len(inFlows) > 0 {
 		fmt.Fprintf(&b, "flows: %s\n", strings.Join(inFlows, ", "))
 	}
+	if f != nil {
+		b.WriteString("note: a flow with the same id also exists\n")
+	}
 	return b.String(), nil
+}
+
+// flowByID returns the flow with this id, or nil.
+func (m *Model) flowByID(id string) *Flow {
+	for i := range m.Flows {
+		if m.Flows[i].ID == id {
+			return &m.Flows[i]
+		}
+	}
+	return nil
+}
+
+// showFlow prints one flow and its steps in declaration order.
+func (m *Model) showFlow(f *Flow) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "flow %s %q (%s)\n", f.ID, f.Title, where(f.File, f.Line))
+	if f.Desc != "" {
+		fmt.Fprintf(&b, "%s\n", f.Desc)
+	}
+	b.WriteString("steps:\n")
+	for _, s := range f.Steps {
+		fmt.Fprintf(&b, "  %s -> %s", s.From, s.To)
+		if s.Note != "" {
+			fmt.Fprintf(&b, " : %s", s.Note)
+		}
+		fmt.Fprintf(&b, " (%s)\n", where(f.File, s.Line))
+	}
+	return b.String()
 }
 
 // Find lists every node whose id, title, description or detail line contains query,
@@ -243,6 +281,38 @@ func (m *Model) Find(query string) string {
 		}
 		if snippet != "" {
 			b.WriteString(snippet + "\n")
+		}
+	}
+	return b.String()
+}
+
+// caveatLines returns the detail lines that hedge a claim. Empty text after the prefix
+// does not count; the prefixes are lowercase, like cycle:.
+func caveatLines(n *Node) []string {
+	var out []string
+	for _, detail := range n.Detail {
+		for _, prefix := range []string{"unverified:", "open:"} {
+			if strings.HasPrefix(detail, prefix) && strings.TrimSpace(detail[len(prefix):]) != "" {
+				out = append(out, detail)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// FindCaveats lists every node with unverified: or open: detail lines, then those lines.
+func (m *Model) FindCaveats() string {
+	var b strings.Builder
+	for _, id := range m.Order {
+		n := m.Nodes[id]
+		caveats := caveatLines(n)
+		if len(caveats) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s [%s] %q %s\n", n.ID, n.Kind, n.Title, where(n.File, n.Line))
+		for _, caveat := range caveats {
+			fmt.Fprintf(&b, "  %s\n", caveat)
 		}
 	}
 	return b.String()
