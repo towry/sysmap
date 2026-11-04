@@ -219,12 +219,15 @@ func TestLoadPicksUpDiagramRefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := "stateDiagram-v2\n  [*] --> Ready\n"
+	retry := "flowchart TD\n  Charge --> Approved\n"
 	flow := "flowchart LR\n  Draft --> Paid\n"
 	writeMapFile(t, dir, "docs/state.mmd", state)
+	writeMapFile(t, dir, "docs/retry.mmd", retry)
 	writeMapFile(t, dir, "docs/flow.mermaid", flow)
 	root := writeMapFile(t, dir, "maps/system.smap", `system "Diagrams"
 biz machine "Machine"
   @ ../docs/state.mmd
+  @ ../docs/retry.mmd
 biz flow "Flow"
   @ docs/flow.mermaid
 `)
@@ -235,8 +238,10 @@ biz flow "Flow"
 	if HasErrors(diags) {
 		t.Fatalf("diagram refs are not errors: %v", diags)
 	}
-	if got := m.Nodes["machine"].Diagrams; len(got) != 1 || got[0].Path != "../docs/state.mmd" || got[0].Text != state {
-		t.Fatalf("near-file diagram = %+v, want %q", got, state)
+	got := m.Nodes["machine"].Diagrams
+	if len(got) != 2 || got[0].Path != "../docs/state.mmd" || got[0].Text != state ||
+		got[1].Path != "../docs/retry.mmd" || got[1].Text != retry {
+		t.Fatalf("diagrams on one node = %+v, want the state machine then the retry flowchart", got)
 	}
 	// The first path is looked up next to maps/, then from the repository root.
 	if got := m.Nodes["flow"].Diagrams; len(got) != 1 || got[0].Path != "docs/flow.mermaid" || got[0].Text != flow {
@@ -251,8 +256,8 @@ biz flow "Flow"
 		t.Fatal(err)
 	}
 	for _, n := range v.Nodes {
-		if n.ID == "machine" && (len(n.Diagrams) != 1 || n.Diagrams[0].Text != state) {
-			t.Fatalf("JSON diagram = %+v", n.Diagrams)
+		if n.ID == "machine" && (len(n.Diagrams) != 2 || n.Diagrams[0].Text != state || n.Diagrams[1].Text != retry) {
+			t.Fatalf("JSON diagrams = %+v", n.Diagrams)
 		}
 		if n.ID == "flow" && (len(n.Diagrams) != 1 || n.Diagrams[0].Text != flow) {
 			t.Fatalf("JSON diagram = %+v", n.Diagrams)

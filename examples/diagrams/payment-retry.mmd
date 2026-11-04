@@ -1,0 +1,8 @@
+flowchart TD
+  Charge[Charge the card] --> Approved{Provider approved?}
+  Approved -->|yes| Saved[Save payment]
+  Approved -->|no| Retryable{Retryable failure?}
+  Retryable -->|yes| Wait[Wait with backoff]
+  Wait --> Charge
+  Retryable -->|no| Release[Release stock reservation]
+  Release --> Another[Ask for another payment method]

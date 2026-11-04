@@ -52,10 +52,11 @@ ext platform_pg "Postgres" : shared database
   detail lines across the composed map.
 
 diagrams
-  An @ ref whose path ends in .mmd or .mermaid loads a Mermaid diagram file. The path is
-  relative to the .smap file first, then the repository root. The page shows a preview in
-  the right rail and can draw the diagram on the canvas; 'sysmap serve' reloads when the
-  diagram changes. A missing diagram is an error on the ref line.
+  Each @ ref whose path ends in .mmd or .mermaid loads a Mermaid diagram file. A node may
+  list several diagram refs; the page shows a card for each. The path is relative to the
+  .smap file first, then the repository root. The page shows a preview in the right rail
+  and can draw the diagram on the canvas; 'sysmap serve' reloads when the diagram changes.
+  A missing diagram is an error on the ref line.
   A diagram must stay inside the repository root: the nearest ancestor of the map file
   that has .git, or the map file's own directory when there is none. Absolute paths and
   URLs are refused. Diagram links and images are not loaded; a URL in a label stays text.
