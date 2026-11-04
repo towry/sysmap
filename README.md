@@ -27,6 +27,16 @@ sysmap serve [file]               # browser view that follows edits (127.0.0.1:4
 
 ## Install
 
+From a GitHub Release (Linux or macOS, `amd64` or `arm64`), into `~/.local/bin`:
+
+```
+curl -fsSL https://raw.githubusercontent.com/towry/sysmap/main/install.sh | bash
+```
+
+Set `PREFIX` or `SYSMAP_BIN_DIR` to install elsewhere and `SYSMAP_VERSION=v0.1.0` to pin a version. The script checks the download against the release's `checksums.txt`.
+
+Or build from source:
+
 ```
 go install github.com/towry/sysmap@latest
 ```
@@ -52,4 +62,4 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions (`.github/workflows/release.yml`) then builds `sysmap` for Linux and macOS (`amd64` and `arm64`) with GoReleaser and publishes a GitHub Release with the archives and `checksums.txt`. Pushes to `main` and pull requests run `.github/workflows/ci.yml` (vet, test and build on Linux and macOS).
+GitHub Actions (`.github/workflows/release.yml`) then builds `sysmap` for Linux and macOS (`amd64` and `arm64`) with GoReleaser and publishes a GitHub Release with the archives and `checksums.txt`, which `install.sh` downloads. Pushes to `main` and pull requests run `.github/workflows/ci.yml` (vet, test and build on Linux and macOS).
