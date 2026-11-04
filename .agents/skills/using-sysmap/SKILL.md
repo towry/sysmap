@@ -16,9 +16,9 @@ Which file: a command takes the map as an argument that ends in `.smap` or conta
 1. `sysmap spec` once, so you know the file format and the rules.
 2. `sysmap outline -d 1`: the top level, about 1 KB. Then `sysmap outline <id>` to go down one subtree.
 3. `sysmap show <id>`: one node in full: description, detail lines, code refs, children, what it depends on, what uses it, flows. **The `|` detail lines carry the traps and the facts that matter ("config is ignored here", "frozen, do not extend"); they appear only in `show`, not in `outline`.** Show every node your answer depends on.
-4. `sysmap find <word>`: when you do not know the node, search ids, titles, descriptions and detail lines. It returns the qualified id and `file:line`. It is a plain substring match on the words the map actually uses: a search for "unverified" finds nothing if the map says "未实际运行验证". To audit confidence caveats, `show` the nodes that make production or status claims and read their `|` lines, or search for a word you saw there.
-   `find` prints only where a word occurs, not the matching line, so `show` a hit before you rely on it.
-5. Flows (named step sequences): `outline` lists their ids and step counts. `show` does not accept a flow id; read the steps with `sysmap json` (the `flows` array) or from the nodes' `flows:` line in `show`.
+4. `sysmap find <word>`: when you do not know the node, search ids, titles, descriptions and detail lines. It returns the qualified id and `file:line`. It is a plain substring match on the words the map actually uses, and prints the first matching text under each hit (`desc:`, a `|` detail line or `title:`; an id-only hit has no text). `show` a hit before you rely on it.
+   Caveats: the map marks what is unverified or undecided with detail lines starting `unverified:` or `open:`. `sysmap find --caveats` lists every node that has them with the lines, and `outline` shows ` ?N` after such nodes. Read them before you state anything about production or status; if a node says it is unverified, say so. Older maps may hedge in free prose instead, then `show` the nodes that make status claims.
+5. Flows (named step sequences): `outline` lists their ids and step counts; `sysmap show <flow id>` (qualified in a composed map, e.g. `ml.daily`) prints the steps in order. A node id wins if a node and a flow share an id.
 6. `sysmap impact`: what the planned (`+`/`~`) nodes reach. Only planned nodes are analysed; to ask what changing an existing node would hit, temporarily mark it `~` in a scratch copy and run `impact` on that copy.
 
 How to read what you see:
@@ -26,7 +26,7 @@ How to read what you see:
 - `[core]` means shared: changing it ripples out. `[biz]` is specific to one area. `[ext]` is outside the system.
 - Confidence words (for example "unverified", "from reading the code", "not found") are written as prose in descriptions and detail lines. Read them; do not treat a node as a verified fact when it says otherwise.
 - `check` warns about a business node placed inside a shared node and about dependency cycles (one warning per group of nodes). A cycle that is deliberate, such as a build-time import against a runtime check, is confirmed by a `| cycle: <reason>` detail line on one of its nodes; read that reason, it is the explanation. Do not add a `| cycle:` line just to silence a warning: break the cycle or explain it honestly.
-- A warning that `check` prints on every command (for example a known core-depends-on-business edge) belongs to the map, not to your change. Note it once; compare warnings before and after your edit and only act on new ones.
+- Only `check` prints each warning. Other commands print one line (`note: N warnings (run 'sysmap check' to see them)`); errors are always printed in full. A known, accepted warning belongs to the map, not to your change: compare `check` before and after your edit and only act on new ones.
 - `sysmap check` printing `ok` only means the map is consistent with itself. It does not prove the map matches the code. Run `sysmap check --refs` to confirm every `@ path:line` still exists.
 
 ## Deciding where a feature goes (before writing code)
@@ -39,10 +39,10 @@ How to read what you see:
 
 ## Writing and editing a map
 
-- Run `sysmap spec` for the exact syntax. **Top-level lines start in column 0** (the spec text shows its examples indented for display only). Children are indented two spaces, never tabs. Ids use ASCII letters/digits/`_`/`-` (no dots), one line per node: `core ledger "Ledger" : the only door for money movement`.
+- Run `sysmap spec` for the exact syntax. **Top-level lines start in column 0**, children are indented two spaces, never tabs. Ids use ASCII letters/digits/`_`/`-` (no dots), one line per node: `core ledger "Ledger" : the only door for money movement`.
 - Where new lines go: nodes and edges go before the first `flow` line, because every indented line after `flow` is read as a step of that flow (`inside a flow only steps like ...`). A top-level node written with two spaces of indent is silently read as a child of the node above it; if `impact` or `check` mentions an unexpected parent or area, check your indentation first. A flood of `indent jumps a level` errors means the same mistake.
 - Keep each level to about 5 to 15 nodes; push detail down into children or `|` lines. Put the "why" and the traps in `|` lines, and where the code is in `@ path:line`.
-- Classify honestly: `core` only if several areas really share it. Mark gaps and unverified facts in the description instead of leaving them out.
+- Classify honestly: `core` only if several areas really share it. Record what you could not verify as a detail line `| unverified: <what and why>` (or `| open: <the undecided question>`) on the node, so readers can list it with `sysmap find --caveats`; do not leave gaps out.
 - Draw edges at the level that matters. After editing, run `sysmap check`.
 
 ## Large systems: several files with mount and bind
