@@ -61,6 +61,21 @@ diagrams
   that has .git, or the map file's own directory when there is none. Absolute paths and
   URLs are refused. Diagram links and images are not loaded; a URL in a label stays text.
 
+tasks file (--tasks)
+  sysmap serve|build|json|check <map> --tasks <file> joins a Markdown checklist at view
+  time. Without --tasks nothing is read or shown; no tasks file is discovered automatically.
+  - [ ] refund: write the refund path
+  - [~] refund: expose the API
+  - [x] refund: post the ledger entry
+  Blank lines and # comments are ignored. The text before the first colon is a node id
+  (dotted for a node inside a mounted file); the rest is the task. [ ] is todo, [~] is
+  doing, [x] is done. Every line must have the '- [ ] node: text' shape; a bad line is an
+  error with its line number. A node's badge is done/total over its own tasks and every
+  descendant's tasks; a node with no tasks shows no badge. 'check --tasks' warns for a
+  task naming an unknown node and for a + or ~ node with no task. A missing or unreadable
+  tasks file is an error. The tasks file is view-time only: create it for a change, tick
+  it as work goes, and delete it after 'sysmap accept'.
+
 reading the outline
   ←N     N nodes outside this one depend on it (a container and its child count once)
   ?N     N unverified: or open: caveat lines on this node; see 'sysmap find --caveats'
@@ -97,6 +112,7 @@ rules checked by 'sysmap check'
          is judged inside that file, not by the kind of its mount node)
          a flow step with no matching edge
          a dependency cycle between nodes, unless one of them has "| cycle: <reason>"
+  --tasks also warns: a task names an unknown node; a + or ~ node has no task
   --refs also checks each @ path[:line]: the path must exist and a line number must not
          pass the end of a regular file. Paths resolve from the nearest ancestor of the
          map file that contains .git, or from the map file's own directory.
