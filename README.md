@@ -41,3 +41,15 @@ go run . serve examples/shop.smap
 The page lays out nodes with [dagre](https://github.com/dagrejs/dagre) and pans and zooms with [@panzoom/panzoom](https://github.com/timmywil/panzoom) (both MIT), vendored in `internal/smap/vendor/` and inlined into every built page; see the README there for how to update them.
 
 In the page: drag the background to pan, pinch or hold Ctrl/Cmd and scroll to zoom, two-finger scroll pans, `+` `-` `0` zoom and reset, double-click a node to go inside it, `Esc` to go back.
+
+## Release
+
+1. Merge the commit you want onto `main`.
+2. Tag it and push the tag:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions (`.github/workflows/release.yml`) then builds `sysmap` for Linux and macOS (`amd64` and `arm64`) with GoReleaser and publishes a GitHub Release with the archives and `checksums.txt`. Pushes to `main` and pull requests run `.github/workflows/ci.yml` (vet, test and build on Linux and macOS).
