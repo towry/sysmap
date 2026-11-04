@@ -210,6 +210,7 @@ func (m *Model) Show(id string) (string, error) {
 
 // Find lists every node whose id, title, description or detail line contains query,
 // ignoring case: the qualified id, kind, title and where it is declared, one per line.
+// The first matching description, detail or title follows, clipped around the match.
 func (m *Model) Find(query string) string {
 	q := strings.ToLower(query)
 	var b strings.Builder
@@ -221,11 +222,72 @@ func (m *Model) Find(query string) string {
 		for _, d := range n.Detail {
 			match = match || strings.Contains(strings.ToLower(d), q)
 		}
-		if match {
-			fmt.Fprintf(&b, "%s [%s] %q %s\n", n.ID, n.Kind, n.Title, where(n.File, n.Line))
+		if !match {
+			continue
+		}
+		fmt.Fprintf(&b, "%s [%s] %q %s\n", n.ID, n.Kind, n.Title, where(n.File, n.Line))
+		snippet := ""
+		switch {
+		case strings.Contains(strings.ToLower(n.Desc), q):
+			snippet = "  desc: " + clipAround(n.Desc, query, 100)
+		default:
+			for _, d := range n.Detail {
+				if strings.Contains(strings.ToLower(d), q) {
+					snippet = "  | " + clipAround(d, query, 100)
+					break
+				}
+			}
+			if snippet == "" && strings.Contains(strings.ToLower(n.Title), q) {
+				snippet = "  title: " + clipAround(n.Title, query, 100)
+			}
+		}
+		if snippet != "" {
+			b.WriteString(snippet + "\n")
 		}
 	}
 	return b.String()
+}
+
+// clipAround cuts s to at most limit runes, keeping the first match of query visible.
+func clipAround(s, query string, limit int) string {
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	at := 0
+	if i := strings.Index(strings.ToLower(s), strings.ToLower(query)); i >= 0 {
+		at = utf8.RuneCountInString(s[:i])
+	}
+	start := at - limit/3
+	if start < 0 {
+		start = 0
+	}
+	if start+limit > len(r) {
+		start = len(r) - limit
+	}
+	end := start + limit
+	prefix := start > 0 && start < at
+	suffix := end < len(r) && end > at
+	if prefix {
+		start++
+	}
+	if suffix {
+		end--
+	}
+	if start > at {
+		start = at
+	}
+	if end <= at {
+		end = at + 1
+	}
+	out := string(r[start:end])
+	if prefix {
+		out = "…" + out
+	}
+	if suffix {
+		out += "…"
+	}
+	return out
 }
 
 // insideEnd names the end of e that sits inside id when it is a descendant, not id itself.

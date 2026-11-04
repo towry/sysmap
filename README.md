@@ -21,7 +21,7 @@ sysmap build [file] -o map.html   # one shareable HTML file, no network needed
 sysmap serve [file]               # browser view that follows edits (127.0.0.1:4317)
 ```
 
-`file` defaults to `$SYSMAP_FILE`, `system.smap`, then `.sysmap/system.smap`. Node ids are local to their file and may not contain a dot; a mounted node is addressed as `<mount>.<id>`. See [examples/shop.smap](examples/shop.smap), and run `sysmap spec` for `mount` and `bind`.
+`file` defaults to `$SYSMAP_FILE`, `system.smap`, then `.sysmap/system.smap`. Node ids are local to their file and may not contain a dot; a mounted node is addressed as `<mount>.<id>`. Map lines start in column 0; indent a child by two spaces. `sysmap check` prints every diagnostic; other commands print errors and a one-line warning summary. `find` shows the matching description, detail or title under each hit. See [examples/shop.smap](examples/shop.smap), and run `sysmap spec` for `mount` and `bind`.
 
 ## Install
 

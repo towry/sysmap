@@ -75,7 +75,7 @@ func Parse(src string) (*Model, []Diag) {
 			// Only steps may sit inside a flow.
 			e := edgeRe.FindStringSubmatch(t)
 			if e == nil {
-				fail(ln, "inside a flow only steps like `a -> b : note` are allowed")
+				fail(ln, "inside a flow only steps like `a -> b : note` are allowed; an indented line after `flow` is a step, so nodes and edges go before the first flow, and a line in column 0 ends the flow")
 				continue
 			}
 			m.Flows[flow].Steps = append(m.Flows[flow].Steps, Step{From: e[1], To: e[3], Note: e[4], Line: ln})
@@ -156,7 +156,7 @@ func Parse(src string) (*Model, []Diag) {
 			}
 			if level > 0 {
 				if len(stack) == 0 || stack[len(stack)-1].level != level-1 {
-					fail(ln, "indent jumps a level or has no parent node")
+					fail(ln, "indent jumps a level or has no parent node; top-level lines start in column 0 and children are indented two spaces under their parent")
 					continue
 				}
 				n.Parent = stack[len(stack)-1].n.ID

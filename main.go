@@ -131,13 +131,7 @@ func run(args []string) int {
 	if cmd == "check" && *refs {
 		diags = append(diags, m.CheckRefs()...)
 	}
-	for _, d := range diags {
-		file := d.File
-		if file == "" {
-			file = path
-		}
-		fmt.Fprintf(os.Stderr, "%s:%d: %s: %s\n", file, d.Line, d.Level, d.Msg)
-	}
+	printDiagnostics(path, cmd == "check", diags)
 	if smap.HasErrors(diags) {
 		return 1
 	}
@@ -182,6 +176,62 @@ func run(args []string) int {
 		fmt.Printf("wrote %s\n", *out)
 	}
 	return 0
+}
+
+// diagnosticLines formats diagnostics for stderr. check prints every warning; other
+// commands print errors only and summarize warnings, since the full list is one `check`
+// away. More than three diagnostics with the same text in one file collapse after three.
+func diagnosticLines(path string, all bool, diags []smap.Diag) []string {
+	type key struct{ file, msg string }
+	display := func(d smap.Diag) string {
+		if d.File != "" {
+			return d.File
+		}
+		return path
+	}
+	var shown []smap.Diag
+	warnings := 0
+	for _, d := range diags {
+		if d.Level == "warn" {
+			warnings++
+			if !all {
+				continue
+			}
+		}
+		shown = append(shown, d)
+	}
+	total := map[key]int{}
+	for _, d := range shown {
+		total[key{display(d), d.Msg}]++
+	}
+	seen := map[key]int{}
+	var lines []string
+	for _, d := range shown {
+		file := display(d)
+		k := key{file, d.Msg}
+		seen[k]++
+		if seen[k] > 3 {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s:%d: %s: %s", file, d.Line, d.Level, d.Msg))
+		if seen[k] == 3 && total[k] > 3 {
+			lines = append(lines, fmt.Sprintf("(and %d more like this in %s)", total[k]-3, file))
+		}
+	}
+	if !all && warnings > 0 {
+		word := "warnings"
+		if warnings == 1 {
+			word = "warning"
+		}
+		lines = append(lines, fmt.Sprintf("note: %d %s (run 'sysmap check' to see them)", warnings, word))
+	}
+	return lines
+}
+
+func printDiagnostics(path string, all bool, diags []smap.Diag) {
+	for _, line := range diagnosticLines(path, all, diags) {
+		fmt.Fprintln(os.Stderr, line)
+	}
 }
 
 // parseInterleaved lets flags appear before or after positional arguments.

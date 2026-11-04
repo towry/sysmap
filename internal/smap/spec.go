@@ -3,20 +3,20 @@ package smap
 // Spec is printed by `sysmap spec`, so an agent never has to guess the format.
 const Spec = `sysmap file format (*.smap): plain text, 2-space indent, # starts a comment.
 
-  system "Name" : one line on what the system is
+system "Name" : one line on what the system is
 
-  core platform "Platform" : shared by many business nodes; change with care
-    core ledger "Ledger" : the only door for money movement
-      | extra lines of detail, shown when you zoom in
-      @ path/to/file.ex:12          (where to read the code)
-  biz billing "Billing" : business-specific
-    biz invoice "Invoice" : only it may mark an order invoiced
-  ext stripe "Stripe" : outside the system
+core platform "Platform" : shared by many business nodes; change with care
+  core ledger "Ledger" : the only door for money movement
+    | extra lines of detail, shown when you zoom in
+    @ path/to/file.ex:12          (where to read the code)
+biz billing "Billing" : business-specific
+  biz invoice "Invoice" : only it may mark an order invoiced
+ext stripe "Stripe" : outside the system
 
-  invoice -> ledger : post entry      (-> call, ~> async)
+invoice -> ledger : post entry      (-> call, ~> async)
 
-  flow checkout "Checkout" : optional note
-    cart -> invoice : submit order    (steps follow the edges above)
+flow checkout "Checkout" : optional note
+  cart -> invoice : submit order    (steps follow the edges above)
 
 kinds
   core  shared boundary, used across business nodes
@@ -24,6 +24,7 @@ kinds
   ext   system outside the one being mapped
 
 structure
+  Top-level lines start in column 0; children are indented two spaces.
   Indent a node under another to contain it. Ids are unique inside the file
   (ASCII letters, digits, _ -; a dot is reserved for a node inside a mounted file).
   The title in quotes and the " : description" are optional; a title cannot contain a
@@ -31,10 +32,10 @@ structure
   node also counts as using its parent. Keep each level to about 5-15 nodes; push detail down.
 
 multi-file maps: mount a whole subsystem
-  core ml "ML pipeline" : research to the daily run
-    mount ../docs/architecture/ml.smap
-    bind postgres = platform_pg
-  ext platform_pg "Postgres" : shared database
+core ml "ML pipeline" : research to the daily run
+  mount ../docs/architecture/ml.smap
+  bind postgres = platform_pg
+ext platform_pg "Postgres" : shared database
 
   mount <path>   the mounted file's top-level nodes become children of this node. The path
                  is relative to the file that mounts it; an absolute path, a URL, a cycle
@@ -54,14 +55,14 @@ reading the outline
   (+N below)   N descendants hidden by the depth limit; use 'sysmap show <id>' or -d to see them
 
 planning a change (impact shows up in the page and in 'sysmap impact')
-  + biz refund "Refund" : new node, not built yet
-  ~ core ledger "Ledger" : existing node that the change will modify
++ biz refund "Refund" : new node, not built yet
+~ core ledger "Ledger" : existing node that the change will modify
   Add the edges the new node will have. After the change ships, run 'sysmap accept'.
 
 deliberate dependency cycles
   check warns once per group of nodes that depend on each other in a cycle. If the cycle
   is intended, confirm it with a detail line on any node in the group:
-    | cycle: both directions are required during the migration
+  | cycle: both directions are required during the migration
   The text after "cycle:" must be non-empty; an empty "| cycle:" does not confirm it.
   Self-loops and edges between a container and its own child are reported separately.
 

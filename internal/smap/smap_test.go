@@ -1368,3 +1368,108 @@ func TestMountBoundaryDoesNotJudgeMountedTopLevelNodes(t *testing.T) {
 		t.Fatalf("mounted top-level biz warned on its own: %+v", got)
 	}
 }
+
+func TestSpecLeavesExamplesAtColumnZero(t *testing.T) {
+	want := "Top-level lines start in column 0; children are indented two spaces."
+	if !strings.Contains(Spec, want) {
+		t.Fatalf("spec lacks the indentation sentence %q", want)
+	}
+	for _, line := range []string{
+		`system "Name" : one line on what the system is`,
+		`core platform "Platform" : shared by many business nodes; change with care`,
+		`biz billing "Billing" : business-specific`,
+		`ext stripe "Stripe" : outside the system`,
+		`invoice -> ledger : post entry      (-> call, ~> async)`,
+		`flow checkout "Checkout" : optional note`,
+		`core ml "ML pipeline" : research to the daily run`,
+		`ext platform_pg "Postgres" : shared database`,
+		`+ biz refund "Refund" : new node, not built yet`,
+		`~ core ledger "Ledger" : existing node that the change will modify`,
+	} {
+		if !strings.Contains(Spec, "\n"+line+"\n") {
+			t.Errorf("top-level example is not at column 0: %q", line)
+		}
+		if strings.Contains(Spec, "\n  "+line+"\n") {
+			t.Errorf("top-level example still has the display indent: %q", line)
+		}
+	}
+	for _, line := range []string{
+		`  core ledger "Ledger" : the only door for money movement`,
+		`    | extra lines of detail, shown when you zoom in`,
+		`  biz invoice "Invoice" : only it may mark an order invoiced`,
+		`  cart -> invoice : submit order    (steps follow the edges above)`,
+		`  mount ../docs/architecture/ml.smap`,
+		`  bind postgres = platform_pg`,
+	} {
+		if !strings.Contains(Spec, "\n"+line+"\n") {
+			t.Errorf("relative example indentation changed: %q", line)
+		}
+	}
+}
+
+func TestIndentAndFlowDiagnosticsExplainTheFix(t *testing.T) {
+	_, diags := Parse("core a\n    core b\n")
+	d := diagWith(diags, "indent jumps a level")
+	if d == nil || !strings.Contains(d.Msg, "top-level lines start in column 0") || !strings.Contains(d.Msg, "two spaces") {
+		t.Fatalf("indent diagnostic = %+v", diags)
+	}
+
+	_, diags = Parse("flow f\n  core a\n")
+	d = diagWith(diags, "inside a flow only steps")
+	if d == nil || !strings.Contains(d.Msg, "an indented line after") || !strings.Contains(d.Msg, "line in column 0 ends the flow") {
+		t.Fatalf("flow diagnostic = %+v", diags)
+	}
+}
+
+func TestFindShowsTheFirstMatchingText(t *testing.T) {
+	dir := t.TempDir()
+	long := strings.Repeat("x", 80) + " NEEDLE " + strings.Repeat("y", 80)
+	path := writeMapFile(t, dir, "find.smap", "system \"Find\"\nbiz alpha \"Payment Gateway\" : handles charges\n  | uses the LEDGER daily\nbiz beta \"Other\" : nothing here\nbiz gamma \"Gamma\" : "+long+"\n")
+	m := loadClean(t, path)
+
+	cases := []struct {
+		query, want, absent string
+	}{
+		{"charges", "  desc: handles charges", ""},
+		{"ledger", "  | uses the LEDGER daily", ""},
+		{"gateway", "  title: Payment Gateway", ""},
+		{"alpha", "", "  desc:"},
+		{"beta", "", "  title:"},
+	}
+	for _, tc := range cases {
+		got := m.Find(tc.query)
+		if tc.query == "beta" {
+			if !strings.Contains(got, "beta [biz] \"Other\"") {
+				t.Errorf("find %q = %q, want the beta hit", tc.query, got)
+			}
+			for _, bad := range []string{"  desc:", "  | ", "  title:"} {
+				if strings.Contains(got, bad) {
+					t.Errorf("find %q = %q, must not have a snippet", tc.query, got)
+				}
+			}
+			continue
+		}
+		if !strings.Contains(got, "alpha [biz] \"Payment Gateway\"") {
+			t.Errorf("find %q = %q, want the alpha hit", tc.query, got)
+		}
+		if tc.want != "" && !strings.Contains(got, tc.want) {
+			t.Errorf("find %q = %q, want snippet %q", tc.query, got, tc.want)
+		}
+		if tc.absent != "" && strings.Contains(got, tc.absent) {
+			t.Errorf("find %q = %q, must not contain %q", tc.query, got, tc.absent)
+		}
+	}
+
+	got := m.Find("needle")
+	if !strings.Contains(got, "  desc: ") || !strings.Contains(got, "NEEDLE") {
+		t.Fatalf("long description snippet = %q", got)
+	}
+	line := strings.SplitN(got, "\n", 3)[1]
+	snippet := strings.TrimPrefix(line, "  desc: ")
+	if n := len([]rune(snippet)); n > 100 {
+		t.Fatalf("snippet has %d runes, want at most 100: %q", n, snippet)
+	}
+	if !strings.HasPrefix(snippet, "…") || !strings.HasSuffix(snippet, "…") {
+		t.Fatalf("clipped snippet should mark both cuts: %q", snippet)
+	}
+}
