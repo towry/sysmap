@@ -32,7 +32,11 @@ type Note struct {
 
 func (n Note) Text() string {
 	if n.Code == "cross-area-biz" {
-		return fmt.Sprintf("depends on business node %q in another area (%s)", n.Node, n.Area)
+		area := n.Area
+		if area == "" {
+			area = "the top level"
+		}
+		return fmt.Sprintf("depends on business node %q in another area (%s)", n.Node, area)
 	}
 	return "declares no dependency, so it is unclear which shared nodes it reuses"
 }
@@ -86,8 +90,8 @@ func (m *Model) Impact() Impact {
 				item.ReusesCore = append(item.ReusesCore, to)
 			case Biz:
 				item.DependsBiz = append(item.DependsBiz, to)
-				if m.RootOf(to) != m.RootOf(id) {
-					item.Notes = append(item.Notes, Note{Code: "cross-area-biz", Node: to, Area: m.RootOf(to)})
+				if area := m.Area(to); area != m.Area(id) {
+					item.Notes = append(item.Notes, Note{Code: "cross-area-biz", Node: to, Area: area})
 				}
 			default:
 				item.DependsExt = append(item.DependsExt, to)

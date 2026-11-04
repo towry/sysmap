@@ -34,6 +34,12 @@ func (m *Model) Outline(root string, depth int) (string, error) {
 			planned++
 		}
 	}
+	if root != "" {
+		root = m.resolve(root)
+		if m.Nodes[root] == nil {
+			return "", fmt.Errorf("unknown node %q", root)
+		}
+	}
 	if root == "" {
 		title := m.Title
 		if title == "" {
@@ -59,7 +65,10 @@ func (m *Model) Outline(root string, depth int) (string, error) {
 		if n.Desc != "" {
 			fmt.Fprintf(&b, " — %s", clip(n.Desc, 70))
 		}
-		if level+1 >= depth && len(n.Children) > 0 {
+		// A mount is a whole subsystem: always show its size and where it comes from.
+		if n.Mount != "" {
+			fmt.Fprintf(&b, " (+%d below, %d planned) [mount %s]", len(m.Subtree(id))-1, m.plannedBelow(id), n.Mount)
+		} else if level+1 >= depth && len(n.Children) > 0 {
 			fmt.Fprintf(&b, " (+%d below)", len(m.Subtree(id))-1)
 		}
 		b.WriteString("\n")
@@ -70,32 +79,86 @@ func (m *Model) Outline(root string, depth int) (string, error) {
 		}
 	}
 	if root != "" {
-		if m.Nodes[root] == nil {
-			return "", fmt.Errorf("unknown node %q", root)
-		}
 		walk(root, 0)
+		m.writeFlowList(&b, root)
 		return b.String(), nil
 	}
 	for _, r := range m.Roots {
 		walk(r, 0)
 	}
-	if len(m.Flows) > 0 {
-		b.WriteString("flows:\n")
-		for _, f := range m.Flows {
-			fmt.Fprintf(&b, "  %s %q (%d steps)\n", f.ID, f.Title, len(f.Steps))
-		}
-	}
+	m.writeFlowList(&b, "")
 	return b.String(), nil
 }
 
-// Show prints everything about one node: the zoomed-in view.
+// plannedBelow counts the marked descendants of id.
+func (m *Model) plannedBelow(id string) int {
+	n := 0
+	for _, c := range m.Subtree(id)[1:] {
+		if m.Nodes[c].Mark != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// writeFlowList prints the flows declared in scope's file ("" for the root file). The root
+// view also shows how many flows each mount brings in, since it does not list their ids.
+func (m *Model) writeFlowList(b *strings.Builder, scope string) {
+	var lines []string
+	for _, f := range m.Flows {
+		if f.Scope == scope {
+			lines = append(lines, fmt.Sprintf("  %s %q (%d steps)", f.ID, f.Title, len(f.Steps)))
+		}
+	}
+	if scope == "" {
+		rootFile := ""
+		if len(m.Files) > 0 {
+			rootFile = m.Files[0]
+		}
+		for _, id := range m.Order {
+			n := m.Nodes[id]
+			if n.Mount == "" || (rootFile != "" && n.File != rootFile) {
+				continue
+			}
+			count := 0
+			for _, f := range m.Flows {
+				if m.InSubtree(f.Scope, id) {
+					count++
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  %s: %d flows", id, count))
+		}
+	}
+	if len(lines) > 0 {
+		b.WriteString("flows:\n")
+		for _, line := range lines {
+			b.WriteString(line + "\n")
+		}
+	}
+}
+
+// where formats a declaration location as file:line, or just the line when there is no file.
+func where(file string, line int) string {
+	if file == "" {
+		return fmt.Sprintf("%d", line)
+	}
+	return fmt.Sprintf("%s:%d", file, line)
+}
+
+// Show prints everything about one node: the zoomed-in view. An id that a bind removed
+// still resolves, and so does the local stub name the mounted file used.
 func (m *Model) Show(id string) (string, error) {
+	id = m.resolve(id)
 	n := m.Nodes[id]
 	if n == nil {
 		return "", fmt.Errorf("unknown node %q", id)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s[%s] %s %q\n", m.mark(n), n.Kind, n.ID, n.Title)
+	fmt.Fprintf(&b, "%s[%s] %s %q", m.mark(n), n.Kind, n.ID, n.Title)
+	if len(m.Files) > 1 {
+		fmt.Fprintf(&b, " (%s)", where(n.File, n.Line))
+	}
+	b.WriteString("\n")
 	if path := m.Ancestors(id); len(path) > 0 {
 		for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 			path[i], path[j] = path[j], path[i]
@@ -110,6 +173,12 @@ func (m *Model) Show(id string) (string, error) {
 	}
 	for _, r := range n.Refs {
 		fmt.Fprintf(&b, "  @ %s\n", r)
+	}
+	if len(n.Binds) > 0 {
+		b.WriteString("binds:\n")
+		for _, bind := range n.Binds {
+			fmt.Fprintf(&b, "  %s = %s\n", bind.Stub, bind.Target)
+		}
 	}
 	if len(n.Children) > 0 {
 		b.WriteString("children:\n")
@@ -139,6 +208,26 @@ func (m *Model) Show(id string) (string, error) {
 	return b.String(), nil
 }
 
+// Find lists every node whose id, title, description or detail line contains query,
+// ignoring case: the qualified id, kind, title and where it is declared, one per line.
+func (m *Model) Find(query string) string {
+	q := strings.ToLower(query)
+	var b strings.Builder
+	for _, id := range m.Order {
+		n := m.Nodes[id]
+		match := strings.Contains(strings.ToLower(n.ID), q) ||
+			strings.Contains(strings.ToLower(n.Title), q) ||
+			strings.Contains(strings.ToLower(n.Desc), q)
+		for _, d := range n.Detail {
+			match = match || strings.Contains(strings.ToLower(d), q)
+		}
+		if match {
+			fmt.Fprintf(&b, "%s [%s] %q %s\n", n.ID, n.Kind, n.Title, where(n.File, n.Line))
+		}
+	}
+	return b.String()
+}
+
 // insideEnd names the end of e that sits inside id when it is a descendant, not id itself.
 func (m *Model) insideEnd(e Edge, id string) string {
 	for _, end := range []string{e.From, e.To} {
@@ -158,6 +247,9 @@ func (m *Model) writeEdges(b *strings.Builder, label string, reverse bool, id st
 		}
 		arrow := map[[2]bool]string{{false, false}: "->", {false, true}: "~>", {true, false}: "<-", {true, true}: "<~"}[[2]bool{reverse, e.Async}]
 		line := fmt.Sprintf("  %s %s [%s]", arrow, other, m.Nodes[other].Kind)
+		if len(m.Files) > 1 {
+			line += " (" + where(e.File, e.Line) + ")"
+		}
 		if inner := m.insideEnd(e, id); inner != "" {
 			line += " (via " + inner + ")"
 		}

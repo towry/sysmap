@@ -2,8 +2,9 @@
 
 A map of a system that an agent can maintain in a small text file and a person can browse in one HTML page.
 
-- **Outline first, zoom in on demand.** `sysmap outline` prints the tree; `sysmap show <id>` prints one node in full. The page does the same: an outline on the left, one level of the map in the middle, details on the right. Double-click a node to go inside it.
+- **Outline first, zoom in on demand.** `sysmap outline` prints the tree; `sysmap show <id>` prints one node in full; `sysmap find <word>` searches ids, titles, descriptions and details. The page does the same: an outline on the left, one level of the map in the middle, details on the right. Double-click a node to go inside it.
 - **Shared boundary or business node.** Every node is `core` (shared by many), `biz` (business-specific) or `ext` (outside the system). The page shows how many nodes depend on each shared node.
+- **One file per subsystem.** A node can `mount` another `.smap`; the mounted file's top-level nodes become its children under dotted ids (`ml.deploy_svc`). The child writes its outside dependencies as local `ext` stubs, and the parent joins them to real nodes with `bind`. Each file can still be checked alone.
 - **Impact of a planned change.** Mark a node `+` (new) or `~` (changed) and `sysmap impact`, and the page, show whether the change only reuses shared nodes or reaches into them.
 - **No code analysis.** The map is written by the agent from what it read; there are no parsers and no network calls.
 
@@ -11,6 +12,7 @@ A map of a system that an agent can maintain in a small text file and a person c
 sysmap spec                       # the file format
 sysmap outline [file] [-d N] [id] # tree, default depth 2
 sysmap show <id> [file]           # one node: details, children, dependencies, flows
+sysmap find <word> [file]         # search ids, titles, descriptions, detail lines
 sysmap check [file]               # references and boundary rules
 sysmap impact [file] [--json]     # reach of planned nodes
 sysmap accept [file]              # drop + and ~ after the change shipped
@@ -18,7 +20,7 @@ sysmap build [file] -o map.html   # one shareable HTML file, no network needed
 sysmap serve [file]               # browser view that follows edits (127.0.0.1:4317)
 ```
 
-`file` defaults to `$SYSMAP_FILE`, `system.smap`, then `.sysmap/system.smap`. See [examples/shop.smap](examples/shop.smap).
+`file` defaults to `$SYSMAP_FILE`, `system.smap`, then `.sysmap/system.smap`. Node ids are local to their file and may not contain a dot; a mounted node is addressed as `<mount>.<id>`. See [examples/shop.smap](examples/shop.smap), and run `sysmap spec` for `mount` and `bind`.
 
 ## Install
 

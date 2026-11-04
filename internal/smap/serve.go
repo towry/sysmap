@@ -25,7 +25,11 @@ func Serve(path, addr string) error {
 			if last == nil {
 				var lines []string
 				for _, d := range diags {
-					lines = append(lines, fmt.Sprintf("%s:%d: %s: %s", path, d.Line, d.Level, d.Msg))
+					file := d.File
+					if file == "" {
+						file = path
+					}
+					lines = append(lines, fmt.Sprintf("%s:%d: %s: %s", file, d.Line, d.Level, d.Msg))
 				}
 				return src, m, diags, fmt.Errorf("%s has errors and there is no earlier good version:\n%s", path, strings.Join(lines, "\n"))
 			}

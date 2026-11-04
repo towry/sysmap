@@ -34,6 +34,8 @@ type jsonNode struct {
 	Children []string `json:"children"`
 	Mark     string   `json:"mark"`
 	FanIn    int      `json:"fanin"`
+	File     string   `json:"file"`
+	Area     string   `json:"area"`
 }
 
 type jsonEdge struct {
@@ -80,7 +82,7 @@ func (m *Model) JSON(source string, diags []Diag) []byte {
 		n := m.Nodes[id]
 		v.Nodes = append(v.Nodes, jsonNode{ID: id, Kind: n.Kind, Title: n.Title, Desc: n.Desc,
 			Detail: orEmpty(n.Detail), Refs: orEmpty(n.Refs), Parent: n.Parent, Children: orEmpty(n.Children),
-			Mark: n.Mark, FanIn: len(m.FanIn(id))})
+			Mark: n.Mark, FanIn: len(m.FanIn(id)), File: n.File, Area: m.Area(id)})
 	}
 	for _, e := range m.Edges {
 		v.Edges = append(v.Edges, jsonEdge{From: e.From, To: e.To, Async: e.Async, Label: e.Label})

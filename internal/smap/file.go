@@ -3,6 +3,7 @@ package smap
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -27,16 +28,72 @@ func Resolve(arg string) (string, error) {
 	return "", fmt.Errorf("no model file: pass a path, set SYSMAP_FILE, or create %s", strings.Join(DefaultFiles, " or "))
 }
 
-// Load reads and parses a file, returning the source, the model and every diagnostic.
+// Load reads a map and every file it mounts. It returns the combined source (what a version
+// hash should cover), the composed model and every diagnostic, each with its file.
 func Load(path string) (string, *Model, []Diag, error) {
-	data, err := os.ReadFile(path)
+	l := &loader{src: map[string]string{}}
+	m, err := l.read(path)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	m, diags := Parse(string(data))
-	diags = append(diags, m.Check()...)
-	sort.SliceStable(diags, func(i, j int) bool { return diags[i].Line < diags[j].Line })
-	return string(data), m, diags, nil
+	abs, _ := filepath.Abs(path)
+	l.expand(m, []string{abs})
+	return l.source(m), m, l.finish(m), nil
+}
+
+// source is the root file alone for a single-file map, otherwise every file in order.
+func (l *loader) source(m *Model) string {
+	if len(m.Files) == 1 {
+		return l.src[m.Files[0]]
+	}
+	var b strings.Builder
+	for _, f := range m.Files {
+		fmt.Fprintf(&b, "# file: %s\n%s\n", f, l.src[f])
+	}
+	return b.String()
+}
+
+// finish drops repeated diagnostics, orders them by file then line, and leaves the file
+// name off a single-file map, where it would only repeat the path the caller already has.
+func (l *loader) finish(m *Model) []Diag {
+	order := map[string]int{}
+	for i, f := range m.Files {
+		order[f] = i
+	}
+	seen := map[Diag]bool{}
+	var out []Diag
+	for _, d := range l.diags {
+		if !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if order[out[i].File] != order[out[j].File] {
+			return order[out[i].File] < order[out[j].File]
+		}
+		return out[i].Line < out[j].Line
+	})
+	if l.single(m) {
+		for i := range out {
+			out[i].File = ""
+		}
+	}
+	return out
+}
+
+// single reports a map with one file and no mount declarations. A mount that failed still
+// makes the map multi-file for diagnostics, even though only the root file was read.
+func (l *loader) single(m *Model) bool {
+	if len(m.Files) != 1 {
+		return false
+	}
+	for _, n := range m.Nodes {
+		if n.Mount != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // HasErrors reports whether any diagnostic is an error.
@@ -55,4 +112,22 @@ var markerRe = regexp.MustCompile(`(?m)^(\s*)[+~]\s+(core|biz|ext)\b`)
 func Accept(source string) (string, int) {
 	n := len(markerRe.FindAllString(source, -1))
 	return markerRe.ReplaceAllString(source, "$1$2"), n
+}
+
+// AcceptFiles drops the planned markers in every file of a loaded map and writes each
+// one back. It returns the number of markers removed.
+func AcceptFiles(files []string) (int, error) {
+	total := 0
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return total, err
+		}
+		next, n := Accept(string(data))
+		if err := os.WriteFile(file, []byte(next), 0o644); err != nil {
+			return total, err
+		}
+		total += n
+	}
+	return total, nil
 }

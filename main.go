@@ -17,17 +17,20 @@ const usage = `sysmap: a system map an agent can maintain and a person can brows
 
   sysmap outline [file] [-d N] [id]   tree of the system (default depth 2), or of one node
   sysmap show <id> [file]             zoom into one node: details, children, dependencies, flows
+  sysmap find <query> [file]          search ids, titles, descriptions and detail lines
   sysmap check [file]                 validate references and boundary rules
   sysmap impact [file] [--json]       reach of planned nodes (+ new, ~ changed)
-  sysmap accept [file]                drop the + and ~ markers once the change has shipped
+  sysmap accept [file]                drop the + and ~ markers in every file once shipped
   sysmap build [file] [-o out.html]   write one shareable HTML file
   sysmap serve [file] [-addr host:port]  show in the browser and follow edits
   sysmap json [file]                  the model as JSON
   sysmap spec                         the file format, for writing a map
   sysmap version
 
-file ends in .smap or contains a /; any other word is a node id.
-file defaults to $SYSMAP_FILE, system.smap, then .sysmap/system.smap.
+file ends in .smap or contains a /; any other word is a node id (for find, the query).
+A node id is local to its file and may not contain a dot; a mounted node is addressed as
+<mount>.<id>, and a bind target may be dotted. file defaults to $SYSMAP_FILE, system.smap,
+then .sysmap/system.smap.
 `
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -51,7 +54,7 @@ func run(args []string) int {
 	}
 
 	switch cmd {
-	case "outline", "show", "check", "impact", "accept", "build", "serve", "json":
+	case "outline", "show", "find", "check", "impact", "accept", "build", "serve", "json":
 	default:
 		return fail("unknown command %q\n\n%s", cmd, usage)
 	}
@@ -68,17 +71,27 @@ func run(args []string) int {
 
 	// show takes an id first; outline takes an optional id last. Anything that looks like a
 	// file (has a path separator or the .smap suffix) is the file, the other word is the id.
+	// find instead joins its words, so a query may be several words when quoted.
 	var file, id string
+	var words []string
 	for _, p := range positional {
-		if strings.Contains(p, "/") || strings.HasSuffix(p, ".smap") {
+		switch {
+		case strings.Contains(p, "/") || strings.HasSuffix(p, ".smap"):
 			file = p
-		} else if id == "" {
+		case cmd == "find":
+			words = append(words, p)
+		case id == "":
 			id = p
-		} else {
+		default:
 			return fail("unexpected argument %q", p)
 		}
 	}
-	if cmd != "show" && cmd != "outline" && id != "" {
+	query := strings.Join(words, " ")
+	if cmd == "find" {
+		if query == "" {
+			return fail("find needs a search word")
+		}
+	} else if cmd != "show" && cmd != "outline" && id != "" {
 		file, id = id, ""
 	}
 	path, err := smap.Resolve(file)
@@ -88,15 +101,19 @@ func run(args []string) int {
 
 	switch cmd {
 	case "accept":
-		src, err := os.ReadFile(path)
+		_, m, _, err := smap.Load(path)
 		if err != nil {
 			return fail("%v", err)
 		}
-		next, n := smap.Accept(string(src))
-		if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
+		n, err := smap.AcceptFiles(m.Files)
+		if err != nil {
 			return fail("%v", err)
 		}
-		fmt.Printf("removed %d marker(s) in %s\n", n, path)
+		if len(m.Files) == 1 {
+			fmt.Printf("removed %d marker(s) in %s\n", n, path)
+		} else {
+			fmt.Printf("removed %d marker(s) in %d files\n", n, len(m.Files))
+		}
 		return 0
 	case "serve":
 		if err := smap.Serve(path, *addr); err != nil {
@@ -110,7 +127,11 @@ func run(args []string) int {
 		return fail("%v", err)
 	}
 	for _, d := range diags {
-		fmt.Fprintf(os.Stderr, "%s:%d: %s: %s\n", path, d.Line, d.Level, d.Msg)
+		file := d.File
+		if file == "" {
+			file = path
+		}
+		fmt.Fprintf(os.Stderr, "%s:%d: %s: %s\n", file, d.Line, d.Level, d.Msg)
 	}
 	if smap.HasErrors(diags) {
 		return 1
@@ -134,6 +155,8 @@ func run(args []string) int {
 			return fail("%v", err)
 		}
 		fmt.Print(text)
+	case "find":
+		fmt.Print(m.Find(query))
 	case "impact":
 		imp := m.Impact()
 		if *asJSON {

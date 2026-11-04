@@ -11,17 +11,27 @@ const (
 	Ext  Kind = "ext"  // system outside the one being mapped
 )
 
+// Bind joins an `ext` stub inside a mounted file to a node the mounting file can see.
+type Bind struct {
+	Stub, Target string
+	Line         int
+}
+
 type Node struct {
-	ID       string
-	Kind     Kind
-	Title    string
-	Desc     string
-	Mark     string // "" | "+" planned new | "~" planned change
-	Detail   []string
-	Refs     []string
-	Parent   string
-	Children []string
-	Line     int
+	ID        string
+	Kind      Kind
+	Title     string
+	Desc      string
+	Mark      string // "" | "+" planned new | "~" planned change
+	Detail    []string
+	Refs      []string
+	Parent    string
+	Children  []string
+	Line      int
+	File      string // the .smap file that declares the node; empty for a single-file map
+	Mount     string // path of a .smap file whose top-level nodes become this node's children
+	MountLine int
+	Binds     []Bind
 }
 
 type Edge struct {
@@ -29,6 +39,7 @@ type Edge struct {
 	Async    bool
 	Label    string
 	Line     int
+	File     string
 }
 
 type Step struct {
@@ -40,6 +51,8 @@ type Flow struct {
 	ID, Title, Desc string
 	Steps           []Step
 	Line            int
+	File            string
+	Scope           string // the mount node whose file declares the flow; "" for the root file
 }
 
 type Model struct {
@@ -49,6 +62,8 @@ type Model struct {
 	Roots       []string
 	Edges       []Edge
 	Flows       []Flow
+	Files       []string          // every .smap file in the map, the root first
+	Alias       map[string]string // an id that a bind removed -> the node it was bound to
 }
 
 // Ancestors returns the parents of id, nearest first.
@@ -82,12 +97,30 @@ func (m *Model) Subtree(id string) []string {
 	return out
 }
 
-// RootOf returns the top-level ancestor of id (id itself when top-level).
+// RootOf returns the top-level ancestor of id within its own file (id itself when it is
+// top-level there). A mounted file's top-level nodes are roots of their own areas.
 func (m *Model) RootOf(id string) string {
-	if as := m.Ancestors(id); len(as) > 0 {
-		return as[len(as)-1]
+	cur := id
+	for {
+		n := m.Nodes[cur]
+		if n == nil || n.Parent == "" || m.Nodes[n.Parent].File != n.File {
+			return cur
+		}
+		cur = n.Parent
 	}
-	return id
+}
+
+// Area is the container a node is drawn inside when areas are shown: its file-local
+// top-level ancestor, or the mount node for a mounted file's top-level nodes. Top-level
+// nodes of the root file have none.
+func (m *Model) Area(id string) string {
+	if m.Nodes[id] == nil {
+		return ""
+	}
+	if r := m.RootOf(id); r != id {
+		return r
+	}
+	return m.Nodes[id].Parent
 }
 
 // FanIn lists the distinct nodes outside id's subtree that have an edge into it. A source

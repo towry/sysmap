@@ -471,7 +471,7 @@ function renderMap() {
   let groups = null;
   if (special()) {
     const g = new Map();
-    for (const id of v.ids) { const a = anc(id); if (a.length) g.set(id, a[a.length - 1]); }
+    for (const id of v.ids) { const a = byId.get(id).area; if (a) g.set(id, a); }
     if (new Set(g.values()).size >= 2) groups = g;
   }
   let lay = isNarrow() ? layout(v.ids, v.edges, "TB", groups) : layout(v.ids, v.edges, "LR", groups); // a portrait phone reads top to bottom
@@ -700,7 +700,7 @@ function verdictText(im) {
 }
 
 function noteText(n) {
-  if (n.code === "cross-area-biz") return `注意:依赖了其他区域「${esc(byId.get(n.area).title)}」里的业务节点 ${link(n.node)}`;
+  if (n.code === "cross-area-biz") { const a = n.area ? byId.get(n.area).title : "顶层"; return `注意:依赖了其他区域「${esc(a)}」里的业务节点 ${link(n.node)}`; }
   return "注意:没有声明任何依赖,看不出它复用了哪些通用节点";
 }
 
@@ -780,7 +780,7 @@ function renderChrome() {
   const b = $("banner");
   b.classList.toggle("err", errs > 0);
   if (!D.diags.length) b.classList.remove("on"); else if (errs) b.classList.add("on");
-  b.innerHTML = (errs ? "文件有错误,页面显示的是上一个可用版本。" : "提示:") + "<br>" + D.diags.slice(0, 8).map((d) => `第 ${d.line} 行 [${d.level}] ${esc(d.msg)}`).join("<br>");
+  b.innerHTML = (errs ? "文件有错误,页面显示的是上一个可用版本。" : "提示:") + "<br>" + D.diags.slice(0, 8).map((d) => `${d.file ? esc(d.file) + ":" + d.line : "第 " + d.line + " 行"} [${d.level}] ${esc(d.msg)}`).join("<br>");
   $("outer").setAttribute("aria-pressed", String(showOuter));
 }
 

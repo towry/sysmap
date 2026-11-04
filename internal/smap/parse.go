@@ -7,18 +7,27 @@ import (
 )
 
 type Diag struct {
+	File  string `json:"file,omitempty"` // the .smap file the line is in; empty for a single-file map
 	Line  int    `json:"line"`
 	Level string `json:"level"` // "error" | "warn"
 	Msg   string `json:"msg"`
 }
 
-const idPat = `([A-Za-z0-9_.-]+)`
+// A node declares a local id: no dot, because the dot joins a mount's id to an id inside it
+// (ml.deploy_svc). An edge, a flow step or a bind target may name such a dotted id.
+const (
+	idPat  = `([A-Za-z0-9_-]+)`
+	refPat = `([A-Za-z0-9_.-]+)`
+)
 
 var (
 	sysRe  = regexp.MustCompile(`^system(?:\s+"([^"]*)")?(?:\s*:\s*(.*))?$`)
 	flowRe = regexp.MustCompile(`^flow\s+` + idPat + `(?:\s+"([^"]*)")?(?:\s*:\s*(.*))?$`)
 	nodeRe = regexp.MustCompile(`^(?:([+~])\s+)?(core|biz|ext)\s+` + idPat + `(?:\s+"([^"]*)")?(?:\s*:\s*(.*))?$`)
-	edgeRe = regexp.MustCompile(`^` + idPat + `\s+(->|~>)\s+` + idPat + `(?:\s*:\s*(.*))?$`)
+	edgeRe = regexp.MustCompile(`^` + refPat + `\s+(->|~>)\s+` + refPat + `(?:\s*:\s*(.*))?$`)
+
+	mountRe = regexp.MustCompile(`^mount\s+(\S+)$`)
+	bindRe  = regexp.MustCompile(`^bind\s+` + idPat + `\s*=\s*` + refPat + `$`)
 )
 
 type frame struct {
@@ -30,7 +39,7 @@ type frame struct {
 // and still returns the model built from the lines that were valid.
 func Parse(src string) (*Model, []Diag) {
 	src = strings.TrimPrefix(src, "\ufeff") // a BOM from some editors
-	m := &Model{Nodes: map[string]*Node{}}
+	m := &Model{Nodes: map[string]*Node{}, Alias: map[string]string{}}
 	var diags []Diag
 	fail := func(line int, format string, args ...any) {
 		diags = append(diags, Diag{Line: line, Level: "error", Msg: fmt.Sprintf(format, args...)})
@@ -86,6 +95,25 @@ func Parse(src string) (*Model, []Diag) {
 			if ref := strings.TrimSpace(t[1:]); ref != "" {
 				last.Refs = append(last.Refs, ref)
 			}
+
+		case mountRe.MatchString(t):
+			if last == nil {
+				fail(ln, "`mount` must directly follow the node it attaches to")
+				continue
+			}
+			if last.Mount != "" {
+				fail(ln, "node %q already mounts %s; a node mounts one file", last.ID, last.Mount)
+				continue
+			}
+			last.Mount, last.MountLine = mountRe.FindStringSubmatch(t)[1], ln
+
+		case bindRe.MatchString(t):
+			if last == nil {
+				fail(ln, "`bind` must directly follow the node whose mount it belongs to")
+				continue
+			}
+			b := bindRe.FindStringSubmatch(t)
+			last.Binds = append(last.Binds, Bind{Stub: b[1], Target: b[2], Line: ln})
 
 		case sysRe.MatchString(t):
 			s := sysRe.FindStringSubmatch(t)
@@ -147,7 +175,7 @@ func Parse(src string) (*Model, []Diag) {
 
 		default:
 			if first := strings.Fields(t)[0]; first == "core" || first == "biz" || first == "ext" || first == "flow" || first == "system" || first == "+" || first == "~" {
-				fail(ln, "malformed %s line: ids use letters, digits and . _ - only, and a title cannot contain a double quote", first)
+				fail(ln, "malformed %s line: ids use letters, digits and _ - only (a dot is reserved for ids inside a mounted file), and a title cannot contain a double quote", first)
 				continue
 			}
 			fail(ln, "cannot parse this line; expected `core|biz|ext <id> \"Title\" : desc`, `a -> b : label`, `flow <id>`, `| detail` or `@ path`")

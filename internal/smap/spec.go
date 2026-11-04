@@ -24,11 +24,30 @@ kinds
   ext   system outside the one being mapped
 
 structure
-  Indent a node under another to contain it. Ids are unique across the file
-  (ASCII letters, digits, . _ -). The title in quotes and the " : description" are optional;
-  a title cannot contain a double quote.
-  Draw edges between siblings or at the level that matters; an edge to a node also
-  counts as using its parent. Keep each level to about 5-15 nodes; push detail down.
+  Indent a node under another to contain it. Ids are unique inside the file
+  (ASCII letters, digits, _ -; a dot is reserved for a node inside a mounted file).
+  The title in quotes and the " : description" are optional; a title cannot contain a
+  double quote. Draw edges between siblings or at the level that matters; an edge to a
+  node also counts as using its parent. Keep each level to about 5-15 nodes; push detail down.
+
+multi-file maps: mount a whole subsystem
+  core ml "ML pipeline" : research to the daily run
+    mount ../docs/architecture/ml.smap
+    bind postgres = platform_pg
+  ext platform_pg "Postgres" : shared database
+
+  mount <path>   the mounted file's top-level nodes become children of this node. The path
+                 is relative to the file that mounts it; an absolute path, a URL, a cycle
+                 and nesting deeper than 8 mounts are errors. A node mounts at most one file.
+  bind <stub> = <target>
+                 join an ext leaf stub inside the mounted file to a node here or in another
+                 mounted file (signal.ingest). After composition the stub disappears, its
+                 edges and flow steps point at the target, and show ml.<stub> still resolves.
+  Ids inside a file are prefixed with the mounting node: ml.deploy_svc. While that file is
+  written or checked alone they stay local. A file may draw edges to its own nodes and to
+  the node it mounts, never to an id inside the mounted file: declare a local ext stub in
+  the child and bind it here. 'sysmap find <word>' searches ids, titles, descriptions and
+  detail lines across the composed map.
 
 reading the outline
   ←N     N nodes outside this one depend on it (a container and its child count once)
@@ -41,6 +60,7 @@ planning a change (impact shows up in the page and in 'sysmap impact')
 
 rules checked by 'sysmap check'
   error  unknown node in an edge or flow step, duplicate id, bad indent
+         mount path missing, absolute or a URL; mount cycle; bad bind stub or target
   warn   a core node depends on a business node
          a flow step with no matching edge
 `
