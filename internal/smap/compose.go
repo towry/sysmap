@@ -32,10 +32,6 @@ func (l *loader) read(path string) (*Model, error) {
 	}
 	l.src[path] = string(data)
 	m, diags := Parse(string(data))
-	for _, d := range append(diags, m.Check()...) {
-		d.File = path
-		l.diags = append(l.diags, d)
-	}
 	for _, n := range m.Nodes {
 		n.File = path
 	}
@@ -44,6 +40,10 @@ func (l *loader) read(path string) (*Model, error) {
 	}
 	for i := range m.Flows {
 		m.Flows[i].File = path
+	}
+	for _, d := range append(diags, m.checkLocal()...) {
+		d.File = path
+		l.diags = append(l.diags, d)
 	}
 	m.Files = []string{path}
 	return m, nil

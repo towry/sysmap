@@ -999,3 +999,372 @@ func TestCheckRefsFallsBackToTheMapDirectoryWithoutGit(t *testing.T) {
 		t.Fatalf("message = %s", diags[0].Msg)
 	}
 }
+
+// --- containment and dependency-cycle warnings ---
+
+func cycleWarnings(diags []Diag) []Diag {
+	var out []Diag
+	for _, d := range diags {
+		if d.Level == "warn" && strings.Contains(d.Msg, "dependency cycle") {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func containmentWarnings(diags []Diag) []Diag {
+	var out []Diag
+	for _, d := range diags {
+		if d.Level == "warn" && strings.Contains(d.Msg, "sits inside shared node") {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+const cycleHint = `; confirm it with a "| cycle: <reason>" detail line on one of them or break it`
+
+func TestDependencyCycleWarnsOncePerGroup(t *testing.T) {
+	cases := []struct {
+		name, src, between string
+	}{
+		{
+			name:    "two nodes",
+			src:     "biz a\nbiz b\na -> b\nb -> a\n",
+			between: "a and b",
+		},
+		{
+			name:    "three nodes",
+			src:     "biz a\nbiz b\nbiz c\na -> b\nb -> c\nc -> a\n",
+			between: "a, b and c",
+		},
+		{
+			// Five edges but one group: the warning must not repeat per edge.
+			name:    "bigger group",
+			src:     "biz a\nbiz b\nbiz c\nbiz d\na -> b\nb -> c\nc -> d\nd -> a\na -> c\n",
+			between: "a, b, c and d",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mustParse(t, tc.src)
+			got := cycleWarnings(m.Check())
+			if len(got) != 1 {
+				t.Fatalf("cycle warnings = %+v, want exactly one group", got)
+			}
+			want := "dependency cycle between " + tc.between + cycleHint
+			if got[0].Msg != want {
+				t.Fatalf("message = %q, want %q", got[0].Msg, want)
+			}
+		})
+	}
+}
+
+func TestCycleDetailConfirmsOnlyWithTextOnACycleNode(t *testing.T) {
+	base := func(detail string) string {
+		return "biz a\nbiz b\n  | " + detail + "\na -> b\nb -> a\n"
+	}
+	cases := []struct {
+		name     string
+		src      string
+		wantWarn bool
+	}{
+		{"text confirms", base("cycle: both directions are intentional"), false},
+		{"empty does not confirm", base("cycle:"), true},
+		{"spaces do not confirm", base("cycle:   "), true},
+		{
+			name:     "text on an unrelated node does not confirm",
+			src:      "biz a\nbiz b\nbiz c\n  | cycle: unrelated\nbiz d\na -> b\nb -> a\n",
+			wantWarn: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mustParse(t, tc.src)
+			got := cycleWarnings(m.Check())
+			if tc.wantWarn && len(got) != 1 {
+				t.Fatalf("cycle warnings = %+v, want one", got)
+			}
+			if !tc.wantWarn && len(got) != 0 {
+				t.Fatalf("cycle warnings = %+v, want none for a confirmed cycle", got)
+			}
+		})
+	}
+}
+
+func TestTwoCyclesWarnSeparately(t *testing.T) {
+	m := mustParse(t, "biz a\nbiz b\nbiz c\nbiz d\na -> b\nb -> a\nc -> d\nd -> c\n")
+	got := cycleWarnings(m.Check())
+	if len(got) != 2 {
+		t.Fatalf("cycle warnings = %+v, want two groups", got)
+	}
+	messages := got[0].Msg + " | " + got[1].Msg
+	for _, want := range []string{
+		"dependency cycle between a and b" + cycleHint,
+		"dependency cycle between c and d" + cycleHint,
+	} {
+		if !strings.Contains(messages, want) {
+			t.Fatalf("messages = %q, missing %q", messages, want)
+		}
+	}
+}
+
+func TestAcyclicDiamondHasNoCycleWarning(t *testing.T) {
+	m := mustParse(t, "biz a\nbiz b\nbiz c\nbiz d\na -> b\na -> c\nb -> d\nc -> d\n")
+	if got := cycleWarnings(m.Check()); len(got) != 0 {
+		t.Fatalf("cycle warnings = %+v, want none", got)
+	}
+}
+
+func TestCycleCheckIgnoresSelfLoopsAndContainmentEdges(t *testing.T) {
+	t.Run("self loop", func(t *testing.T) {
+		m, _ := Parse("biz a\nbiz b\na -> a\na -> b\nb -> a\n")
+		diags := m.Check()
+		if got := cycleWarnings(diags); len(got) != 1 {
+			t.Fatalf("cycle warnings = %+v, want only the a/b group", got)
+		}
+		errs := 0
+		for _, d := range diags {
+			if d.Level == "error" && strings.Contains(d.Msg, "itself") {
+				errs++
+			}
+		}
+		if errs != 1 {
+			t.Fatalf("self-loop errors = %d, want 1 in %+v", errs, diags)
+		}
+	})
+
+	t.Run("container and child", func(t *testing.T) {
+		m := mustParse(t, "biz parent\n  biz child\nparent -> child\nchild -> parent\n")
+		diags := m.Check()
+		if got := cycleWarnings(diags); len(got) != 0 {
+			t.Fatalf("cycle warnings = %+v, want none for container edges", got)
+		}
+		contain := 0
+		for _, d := range diags {
+			if strings.Contains(d.Msg, "contain one another") {
+				contain++
+			}
+		}
+		if contain != 2 {
+			t.Fatalf("containment warnings = %d, want 2 in %+v", contain, diags)
+		}
+	})
+}
+
+func TestSingleFileCycleCarriesItsLine(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMapFile(t, dir, "cycle.smap", "biz a \"A\"\nbiz b \"B\"\na -> b\nb -> a\n")
+	_, m, diags, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cycleWarnings(diags)
+	if len(got) != 1 || got[0].Line != 3 {
+		t.Fatalf("cycle warnings = %+v, want one at line 3", got)
+	}
+	if got := cycleWarnings(m.Check()); len(got) != 1 {
+		t.Fatalf("Check on the loaded model = %+v", got)
+	}
+}
+
+func TestCycleAcrossTwoMountedFiles(t *testing.T) {
+	dir := t.TempDir()
+	one := writeMapFile(t, dir, "one.smap", `biz a "A"
+ext sa "Stub"
+a -> sa
+`)
+	writeMapFile(t, dir, "two.smap", `biz b "B"
+ext sb "Stub"
+b -> sb
+`)
+	root := writeMapFile(t, dir, "root.smap", `core one "One"
+  mount one.smap
+  bind sa = two.b
+core two "Two"
+  mount two.smap
+  bind sb = one.a
+`)
+	_, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := containmentWarnings(diags); len(got) != 0 {
+		t.Fatalf("mounted top-level biz nodes must be exempt: %+v", got)
+	}
+	got := cycleWarnings(diags)
+	if len(got) != 1 {
+		t.Fatalf("cycle warnings = %+v, want one", got)
+	}
+	want := "dependency cycle between one.a and two.b" + cycleHint
+	if got[0].Msg != want {
+		t.Fatalf("message = %q, want %q", got[0].Msg, want)
+	}
+	if got[0].File != one || got[0].Line != 3 {
+		t.Fatalf("warning at %s:%d, want %s:3", got[0].File, got[0].Line, one)
+	}
+	if got := cycleWarnings(m.Check()); len(got) != 1 {
+		t.Fatalf("Check on the composed model = %+v", got)
+	}
+}
+
+func TestCycleCreatedOnlyByBinds(t *testing.T) {
+	dir := t.TempDir()
+	one := writeMapFile(t, dir, "one.smap", `biz a "A"
+biz c "C"
+ext sa "SA"
+ext sc "SC"
+a -> sa
+c -> sc
+`)
+	writeMapFile(t, dir, "two.smap", `biz b "B"
+biz d "D"
+ext sb "SB"
+ext sd "SD"
+b -> sb
+d -> sd
+`)
+	root := writeMapFile(t, dir, "root.smap", `core one "One"
+  mount one.smap
+  bind sa = two.b
+  bind sc = two.d
+core two "Two"
+  mount two.smap
+  bind sb = one.c
+  bind sd = one.a
+`)
+	_, _, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cycleWarnings(diags)
+	if len(got) != 1 {
+		t.Fatalf("cycle warnings = %+v, want one group created by binds", got)
+	}
+	want := "dependency cycle between one.a, one.c, two.b and two.d" + cycleHint
+	if got[0].Msg != want {
+		t.Fatalf("message = %q, want %q", got[0].Msg, want)
+	}
+	if got[0].File != one || got[0].Line != 5 {
+		t.Fatalf("warning at %s:%d, want %s:5", got[0].File, got[0].Line, one)
+	}
+}
+
+func TestCycleDetailConfirmsAfterComposition(t *testing.T) {
+	dir := t.TempDir()
+	writeMapFile(t, dir, "one.smap", `biz a "A"
+  | cycle: the two sides must call each other
+ext sa "Stub"
+a -> sa
+`)
+	writeMapFile(t, dir, "two.smap", `biz b "B"
+ext sb "Stub"
+b -> sb
+`)
+	root := writeMapFile(t, dir, "root.smap", `core one "One"
+  mount one.smap
+  bind sa = two.b
+core two "Two"
+  mount two.smap
+  bind sb = one.a
+`)
+	_, _, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cycleWarnings(diags); len(got) != 0 {
+		t.Fatalf("confirmed cycle still warns: %+v", got)
+	}
+}
+
+func TestBusinessNodeInsideSharedNodeWarns(t *testing.T) {
+	cases := []struct {
+		name, src string
+		want      int
+	}{
+		{"biz under core", "core shared \"S\"\n  biz app \"A\"\n", 1},
+		{"biz under biz", "biz parent \"P\"\n  biz child \"C\"\n", 0},
+		{"core under biz", "biz parent \"P\"\n  core child \"C\"\n", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeMapFile(t, dir, "root.smap", tc.src)
+			_, _, diags, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := containmentWarnings(diags)
+			if len(got) != tc.want {
+				t.Fatalf("containment warnings = %+v, want %d", got, tc.want)
+			}
+			if tc.want == 0 {
+				return
+			}
+			want := `business node "app" sits inside shared node "shared"; shared nodes should not contain business code`
+			if got[0].Msg != want || got[0].Line != 2 {
+				t.Fatalf("warning = %+v, want %q at line 2", got[0], want)
+			}
+			if got := containmentWarnings(mustParse(t, tc.src).Check()); len(got) != tc.want {
+				t.Fatalf("Check on the parsed model = %+v", got)
+			}
+		})
+	}
+}
+
+func TestContainmentIsCheckedInsideMountedFiles(t *testing.T) {
+	dir := t.TempDir()
+	child := writeMapFile(t, dir, "child.smap", "core shared \"S\"\n  biz app \"A\"\n")
+	root := writeMapFile(t, dir, "root.smap", `core ml "ML"
+  mount child.smap
+`)
+	_, _, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := containmentWarnings(diags)
+	if len(got) != 1 || got[0].File != child || got[0].Line != 2 {
+		t.Fatalf("containment warnings = %+v, want one at %s:2", got, child)
+	}
+	if !strings.Contains(got[0].Msg, `"app"`) || !strings.Contains(got[0].Msg, `"shared"`) {
+		t.Fatalf("message = %s", got[0].Msg)
+	}
+
+	// Checking the mounted file alone must report the same local problem.
+	_, _, alone, err := Load(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := containmentWarnings(alone); len(got) != 1 {
+		t.Fatalf("containment warnings for the file alone = %+v", got)
+	}
+}
+
+func TestMountBoundaryDoesNotJudgeMountedTopLevelNodes(t *testing.T) {
+	dir := t.TempDir()
+	writeMapFile(t, dir, "child.smap", "biz deploy \"Deploy\"\n")
+	root := writeMapFile(t, dir, "root.smap", `core ml "ML"
+  mount child.smap
+  biz manual "Manual"
+`)
+	_, _, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := containmentWarnings(diags)
+	if len(got) != 1 {
+		t.Fatalf("containment warnings = %+v, want only the parent-file child", got)
+	}
+	if !strings.Contains(got[0].Msg, `"manual"`) || strings.Contains(got[0].Msg, `"deploy"`) {
+		t.Fatalf("warning = %s, want only manual", got[0].Msg)
+	}
+
+	// A top-level biz node in a mounted file has no parent inside its own file.
+	_, _, alone, err := Load(filepath.Join(dir, "child.smap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := containmentWarnings(alone); len(got) != 0 {
+		t.Fatalf("mounted top-level biz warned on its own: %+v", got)
+	}
+}

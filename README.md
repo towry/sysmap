@@ -6,6 +6,7 @@ A map of a system that an agent can maintain in a small text file and a person c
 - **Shared boundary or business node.** Every node is `core` (shared by many), `biz` (business-specific) or `ext` (outside the system). The page shows how many nodes depend on each shared node.
 - **One file per subsystem.** A node can `mount` another `.smap`; the mounted file's top-level nodes become its children under dotted ids (`ml.deploy_svc`). The child writes its outside dependencies as local `ext` stubs, and the parent joins them to real nodes with `bind`. Each file can still be checked alone.
 - **Impact of a planned change.** Mark a node `+` (new) or `~` (changed) and `sysmap impact`, and the page, show whether the change only reuses shared nodes or reaches into them.
+- **Checked, not banned.** `sysmap check` warns when a business node sits directly inside a shared node, and once per dependency cycle. A deliberate cycle is confirmed with a `| cycle: <reason>` detail line on any node in it; a mounted file's top level is judged inside its own file.
 - **No code analysis.** The map is written by the agent from what it read; there are no parsers and no network calls.
 
 ```
@@ -13,7 +14,7 @@ sysmap spec                       # the file format
 sysmap outline [file] [-d N] [id] # tree, default depth 2
 sysmap show <id> [file]           # one node: details, children, dependencies, flows
 sysmap find <word> [file]         # search ids, titles, descriptions, detail lines
-sysmap check [file] [--refs]      # references, boundary rules and @ code refs
+sysmap check [file] [--refs]      # references, boundary rules, cycles, @ code refs
 sysmap impact [file] [--json]     # reach of planned nodes
 sysmap accept [file]              # drop + and ~ after the change shipped
 sysmap build [file] -o map.html   # one shareable HTML file, no network needed

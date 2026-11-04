@@ -38,6 +38,8 @@ func Load(path string) (string, *Model, []Diag, error) {
 	}
 	abs, _ := filepath.Abs(path)
 	l.expand(m, []string{abs})
+	// Cycles are decided on the composed edges, after every bind has been applied.
+	l.diags = append(l.diags, m.checkCycles()...)
 	return l.source(m), m, l.finish(m), nil
 }
 

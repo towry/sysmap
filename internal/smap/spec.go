@@ -58,11 +58,21 @@ planning a change (impact shows up in the page and in 'sysmap impact')
   ~ core ledger "Ledger" : existing node that the change will modify
   Add the edges the new node will have. After the change ships, run 'sysmap accept'.
 
+deliberate dependency cycles
+  check warns once per group of nodes that depend on each other in a cycle. If the cycle
+  is intended, confirm it with a detail line on any node in the group:
+    | cycle: both directions are required during the migration
+  The text after "cycle:" must be non-empty; an empty "| cycle:" does not confirm it.
+  Self-loops and edges between a container and its own child are reported separately.
+
 rules checked by 'sysmap check'
   error  unknown node in an edge or flow step, duplicate id, bad indent
          mount path missing, absolute or a URL; mount cycle; bad bind stub or target
   warn   a core node depends on a business node
+         a business node sits directly inside a shared node (a mounted file's top level
+         is judged inside that file, not by the kind of its mount node)
          a flow step with no matching edge
+         a dependency cycle between nodes, unless one of them has "| cycle: <reason>"
   --refs also checks each @ path[:line]: the path must exist and a line number must not
          pass the end of a regular file. Paths resolve from the nearest ancestor of the
          map file that contains .git, or from the map file's own directory.
