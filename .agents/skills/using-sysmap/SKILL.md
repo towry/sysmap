@@ -25,6 +25,7 @@ How to read what you see:
 - `←N` is the number of nodes drawn as depending on a node; a high number on a `core` node marks a common boundary. It counts only edges someone drew, so a missing edge makes shared code look unused.
 - `[core]` means shared: changing it ripples out. `[biz]` is specific to one area. `[ext]` is outside the system.
 - Confidence words (for example "unverified", "from reading the code", "not found") are written as prose in descriptions and detail lines. Read them; do not treat a node as a verified fact when it says otherwise.
+- `check` warns about a business node placed inside a shared node and about dependency cycles (one warning per group of nodes). A cycle that is deliberate, such as a build-time import against a runtime check, is confirmed by a `| cycle: <reason>` detail line on one of its nodes; read that reason, it is the explanation. Do not add a `| cycle:` line just to silence a warning: break the cycle or explain it honestly.
 - A warning that `check` prints on every command (for example a known core-depends-on-business edge) belongs to the map, not to your change. Note it once; compare warnings before and after your edit and only act on new ones.
 - `sysmap check` printing `ok` only means the map is consistent with itself. It does not prove the map matches the code. Run `sysmap check --refs` to confirm every `@ path:line` still exists.
 
