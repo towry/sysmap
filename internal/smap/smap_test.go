@@ -196,7 +196,7 @@ func TestHTMLIsSelfContainedAndSafeToEmbed(t *testing.T) {
 	if strings.Contains(page, "</script><b>") {
 		t.Fatal("model text must not be able to close the data script tag")
 	}
-	for _, bad := range []string{"http://", "https://", "__DATA__", "__DAGRE__", "__TITLE__", "__LIVE__"} {
+	for _, bad := range []string{"http://", "https://", "__DATA__", "__DAGRE__", "__TITLE__", "__LIVE__", "__PELE_SCRIPT__", "__BADGE_ASSETS__", "__DIAG_BADGE__", "__TASK_BADGE__", "__TASK_DETAIL__"} {
 		// the dagre bundle mentions no URLs once comments are stripped
 		if strings.Contains(page, bad) {
 			t.Fatalf("page contains %q", bad)

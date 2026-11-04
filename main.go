@@ -33,6 +33,8 @@ A node id is local to its file and may not contain a dot; a mounted node is addr
 <mount>.<id>, and a bind target may be dotted. file defaults to $SYSMAP_FILE, system.smap,
 then .sysmap/system.smap. --refs resolves @ path[:line] from the nearest ancestor of the
 map file that contains .git, or from the map file's own directory.
+--tasks <file> joins a Markdown checklist for serve, build, json and check; it is never
+read without the flag and never changes the .smap.
 `
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -68,9 +70,13 @@ func run(args []string) int {
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	refs := fs.Bool("refs", false, "verify @ path[:line] references")
 	caveats := fs.Bool("caveats", false, "list nodes with unverified: or open: caveats")
+	tasks := fs.String("tasks", "", "tasks checklist file")
 	positional, err := parseInterleaved(fs, rest)
 	if err != nil {
 		return 2
+	}
+	if *tasks != "" && cmd != "serve" && cmd != "build" && cmd != "json" && cmd != "check" {
+		return fail("--tasks is only supported by serve, build, json and check")
 	}
 
 	// show takes an id first; outline takes an optional id last. Anything that looks like a
@@ -124,7 +130,7 @@ func run(args []string) int {
 		}
 		return 0
 	case "serve":
-		if err := smap.Serve(path, *addr); err != nil {
+		if err := smap.Serve(path, *tasks, *addr); err != nil {
 			return fail("%v", err)
 		}
 		return 0
@@ -136,6 +142,18 @@ func run(args []string) int {
 	}
 	if cmd == "check" && *refs {
 		diags = append(diags, m.CheckRefs()...)
+	}
+	var overlay *smap.TaskOverlay
+	if *tasks != "" {
+		taskSrc, list, taskDiags, err := smap.LoadTasks(*tasks)
+		if err != nil {
+			return fail("cannot read tasks %s: %v", *tasks, err)
+		}
+		overlay = &smap.TaskOverlay{Source: taskSrc, Tasks: list}
+		diags = append(diags, taskDiags...)
+		if cmd == "check" {
+			diags = append(diags, m.CheckTasks(list, *tasks)...)
+		}
 	}
 	printDiagnostics(path, cmd == "check", diags)
 	if smap.HasErrors(diags) {
@@ -178,9 +196,9 @@ func run(args []string) int {
 		}
 		fmt.Print(imp.Text())
 	case "json":
-		fmt.Println(string(m.JSON(src, diags)))
+		fmt.Println(string(m.JSONWithTasks(src, overlay, diags)))
 	case "build":
-		if err := os.WriteFile(*out, m.HTML(src, diags, false), 0o644); err != nil {
+		if err := os.WriteFile(*out, m.HTMLWithTasks(src, overlay, diags, false), 0o644); err != nil {
 			return fail("%v", err)
 		}
 		fmt.Printf("wrote %s\n", *out)

@@ -221,6 +221,78 @@ func TestRunStillPrintsErrorsAndCollapsesRepeats(t *testing.T) {
 	}
 }
 
+func TestCheckTasksFlagWarnsButDoesNotFail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "root.smap")
+	if err := os.WriteFile(path, []byte("+ biz new \"New\"\nbiz with \"With\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tasksPath := filepath.Join(dir, "tasks.md")
+	if err := os.WriteFile(tasksPath, []byte("- [ ] ghost: missing task\n- [x] with: finished task\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := captureRun(t, "check", path, "--tasks", tasksPath)
+	if code != 0 {
+		t.Fatalf("check --tasks = %d, want 0", code)
+	}
+	if !strings.Contains(out, "ok:") {
+		t.Fatalf("check stdout = %q", out)
+	}
+	for _, want := range []string{"task names unknown node \"ghost\"", "planned node \"new\" has no task"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("check stderr = %q, want %q", errOut, want)
+		}
+	}
+
+	if code, _, errOut := captureRun(t, "check", path); code != 0 || errOut != "" {
+		t.Fatalf("check without tasks = exit %d, stderr %q", code, errOut)
+	}
+
+	if code, _, errOut := captureRun(t, "check", path, "--tasks", filepath.Join(dir, "missing.md")); code != 1 || !strings.Contains(errOut, "cannot read tasks") {
+		t.Fatalf("missing tasks file = exit %d, stderr %q", code, errOut)
+	}
+}
+
+func TestTasksAreNotAutoDetectedAndBuildIncludesThem(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "root.smap")
+	if err := os.WriteFile(path, []byte("biz a \"A\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tasksPath := filepath.Join(dir, "root.tasks.md")
+	if err := os.WriteFile(tasksPath, []byte("- [~] a: doing the work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := captureRun(t, "json", path)
+	if code != 0 || errOut != "" {
+		t.Fatalf("json without tasks = exit %d, stderr %q", code, errOut)
+	}
+	if strings.Contains(out, `"progress"`) || strings.Contains(out, `"tasks"`) {
+		t.Fatalf("a tasks file next to the map was auto-detected: %s", out)
+	}
+
+	code, out, errOut = captureRun(t, "json", path, "--tasks", tasksPath)
+	if code != 0 || !strings.Contains(out, `"progress"`) || !strings.Contains(out, `"doing the work"`) {
+		t.Fatalf("json --tasks = exit %d, stderr %q, output %s", code, errOut, out)
+	}
+
+	outPath := filepath.Join(dir, "map.html")
+	if code, _, errOut := captureRun(t, "build", path, "--tasks", tasksPath, "-o", outPath); code != 0 {
+		t.Fatalf("build --tasks = exit %d, stderr %q", code, errOut)
+	}
+	page, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), `class="taskbadge"`) || !strings.Contains(string(page), `doing the work`) ||
+		strings.Count(string(page), `${taskBadge(n)}`) < 2 || !strings.Contains(string(page), `${taskDetail(n)}`) ||
+		strings.Contains(string(page), "__TASK_BADGE__") || strings.Contains(string(page), "__TASK_DETAIL__") || strings.Contains(string(page), "__DIAG_BADGE__") {
+		t.Fatal("built page does not wire the task badge and detail placeholders")
+	}
+}
+
 func TestFindCaveatsFlag(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "caveats.smap")

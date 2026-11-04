@@ -1,0 +1,15 @@
+.taskbadge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--tx2);flex:none;white-space:nowrap}
+.taskbadge .tbar{position:relative;display:inline-block;width:26px;height:4px;border-radius:2px;background:var(--ui2);overflow:hidden;flex:none}
+.taskbadge .tbar i{position:absolute;top:0;bottom:0;left:0;background:var(--new)}
+.taskbadge .tbar i.doing{background:var(--accent)}
+#outline .orow{gap:3px}
+#outline .taskbadge{font-size:10px;gap:3px}
+#outline .taskbadge .tbar{width:20px;height:3px}
+#outline .diagbadge{font-size:10px;padding:0 3px;line-height:13px}
+#outline .tag{font-size:11px;line-height:15px;padding:0 4px}
+.taskprogress{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+#detail .tasklist li{display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:13px}
+#detail .tasklist .tstate{font-size:11px;line-height:16px;border-radius:4px;padding:0 5px;flex:none;border:1px solid var(--ui2);color:var(--tx2)}
+#detail .tasklist .t-done .tstate{color:var(--new);border-color:color-mix(in srgb,var(--new) 50%,var(--ui2))}
+#detail .tasklist .t-doing .tstate{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,var(--ui2))}
+#detail .tasklist .t-done span:last-child{color:var(--tx2)}

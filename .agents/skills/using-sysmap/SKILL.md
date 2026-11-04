@@ -45,6 +45,19 @@ How to read what you see:
 - Classify honestly: `core` only if several areas really share it. Record what you could not verify as a detail line `| unverified: <what and why>` (or `| open: <the undecided question>`) on the node, so readers can list it with `sysmap find --caveats`; do not leave gaps out.
 - Draw edges at the level that matters. After editing, run `sysmap check`.
 
+## Temporary task checklist (--tasks)
+
+For a change in progress, keep the checklist outside the map and join it only when viewing: `sysmap serve|build|json|check <map> --tasks <file>`. Without the flag nothing is read or shown; sysmap never discovers a tasks file automatically.
+
+```
+# line comments and blank lines are ignored
+- [ ] checkout: expose the retry path
+- [~] ledger: post the refund reversal
+- [x] order_store: record the refunded order
+```
+
+The text before the first colon is a node id (dotted ids address nodes inside mounted files); `- [ ]` is todo, `- [~]` doing, `- [x]` done. The page shows a done/total badge and progress bar on cards, tree rows and the detail rail, and the detail rail lists the node's own tasks. A container rolls up its descendants' tasks, each counted once; a node with no tasks has no badge. `check --tasks` warns for a task naming an unknown node and for a `+` or `~` node with no task; a missing or unreadable tasks file is an error. The tasks file is view-time only: create it for the change, tick it as work proceeds, and delete it after `sysmap accept`.
+
 ## Large systems: several files with mount and bind
 
 Give each subsystem its own `.smap` next to its code and mount it from a root map under a node:

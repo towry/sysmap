@@ -285,7 +285,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 <script>__DAGRE__</script>
 <script>__PANZOOM__</script>
 __PELE_SCRIPT__
-<script>
+__BADGE_ASSETS__<script>
 "use strict";
 const KIND = {core: "通用", biz: "业务", ext: "外部"};
 let W = 216, H = 100;
@@ -614,7 +614,7 @@ function renderMap() {
     const dep = n.kind === "core" && n.fanin ? `<span class="dep">被 ${n.fanin} 个依赖</span>` : "";
     const outer = v.ghost.has(id) ? "<span>· 层外</span>" : special() && !boxes.length && par(id) ? `<span>· ${esc(byId.get(par(id)).title)}</span>` : "";
     const kids = n.children.length ? `<span class="kids" title="包含 ${n.children.length} 个子节点,点这里或双击进入" data-kids>${ic("in")} ${n.children.length}</span>` : "";
-    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.id)}"><div class="head"><span class="title">${esc(n.title)}</span>${tag}</div><div class="desc">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}${kids}</div></div>`;
+    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.id)}"><div class="head"><span class="title">${esc(n.title)}</span>${tag}</div><div class="desc">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}__TASK_BADGE____DIAG_BADGE__${kids}</div></div>`;
   }
   const edgesEl = $("edges"), areasEl = $("areas");
   edgesEl.classList.remove("leaving", "enter"); areasEl.classList.remove("leaving", "enter");
@@ -727,7 +727,7 @@ function renderSide() {
     const mk = n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span>` : "";
     const hit = !n.mark && causes(id).length ? `<span class="tag hit" title="${esc(causeText(id))}">波及</span>` : "";
     const fan = n.kind === "core" && n.fanin ? `<span class="n" title="${n.fanin} 个节点依赖它">${n.fanin}</span>` : "";
-    let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}">${caret}<span class="dot ${n.kind}"></span><span class="t">${esc(n.title)}</span>${mk}${hit}${fan}</div>`;
+    let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}">${caret}<span class="dot ${n.kind}"></span><span class="t">${esc(n.title)}</span>${mk}__TASK_BADGE____DIAG_BADGE__${hit}${fan}</div>`;
     if (isOpen && n.children.length) html += `<div class="kids-rule">${n.children.map(walk).join("")}</div>`;
     return html;
   };
@@ -843,7 +843,7 @@ function renderDetail() {
   const path = anc(n.id).reverse();
   const diagrams = n.diagrams || [];
   const refs = n.refs.filter((r) => !isDiagramRef(r));
-  el.innerHTML = `<div class="kindline ${n.kind}">${KIND[n.kind]}${n.kind === "core" ? "边界" : n.kind === "biz" ? "节点" : "系统"} ${n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "计划新增" : "计划修改"}</span>` : ""}</div><h2>${esc(n.title)}</h2><div class="id">${esc(n.id)}${path.length ? " · 位于 " + path.map((p) => esc(byId.get(p).title)).join(" › ") : ""}</div>${n.desc ? `<p>${esc(n.desc)}</p>` : ""}${neighbours(n.id).length ? `<p><button class="btn" data-hood="${esc(n.id)}">看周围的相关节点</button></p>` : ""}${whyBox(n.id)}${item ? impactBox(item) : ""}${diagrams.length ? `<h3>架构图 <span>${diagrams.length}</span></h3>${diagrams.map((d, i) => `<div class="diagram-card"><div class="diagram-head"><code title="${esc(d.path)}">${esc(d.path).replace(/\//g, "/<wbr>")}</code></div><div class="diagram-preview pele-theme" data-preview="${i}"></div><div class="diagram-foot"><button class="btn" data-diagram="${esc(n.id)}" data-index="${i}">在画布中查看</button></div></div>`).join("")}` : ""}${n.detail.length ? `<h3>详细说明</h3><div class="detail">${esc(n.detail.join("\n"))}</div>` : ""}${refs.length ? `<h3>代码位置</h3><ul>${refs.map((r) => `<li><code>${esc(r)}</code></li>`).join("")}</ul>` : ""}${n.children.length ? `<h3>包含的子节点 <span>${n.children.length}</span></h3><ul>${n.children.map((c) => `<li>${link(c)} <span class="lab">${KIND[byId.get(c).kind]}</span></li>`).join("")}</ul><p><button class="btn" data-enter="${esc(n.id)}">${ic("in")} 进入这一层</button></p>` : ""}${out.size ? `<h3>依赖 <span>${out.size}</span></h3><ul>${lst(out)}</ul>` : ""}${inn.size ? `<h3>被依赖 <span>${inn.size}</span></h3><ul>${lst(inn)}</ul>` : ""}${flows.length ? `<h3>参与的流程</h3><ul>${flows.map((f) => `<li><a tabindex="0" data-flow="${esc(f.id)}">${esc(f.title)}</a></li>`).join("")}</ul>` : ""}`;
+  el.innerHTML = `<div class="kindline ${n.kind}">${KIND[n.kind]}${n.kind === "core" ? "边界" : n.kind === "biz" ? "节点" : "系统"} ${n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "计划新增" : "计划修改"}</span>` : ""}</div><h2>${esc(n.title)}</h2><div class="id">${esc(n.id)}${path.length ? " · 位于 " + path.map((p) => esc(byId.get(p).title)).join(" › ") : ""}</div>${n.desc ? `<p>${esc(n.desc)}</p>` : ""}__TASK_DETAIL__${neighbours(n.id).length ? `<p><button class="btn" data-hood="${esc(n.id)}">看周围的相关节点</button></p>` : ""}${whyBox(n.id)}${item ? impactBox(item) : ""}${diagrams.length ? `<h3>架构图 <span>${diagrams.length}</span></h3>${diagrams.map((d, i) => `<div class="diagram-card"><div class="diagram-head"><code title="${esc(d.path)}">${esc(d.path).replace(/\//g, "/<wbr>")}</code></div><div class="diagram-preview pele-theme" data-preview="${i}"></div><div class="diagram-foot"><button class="btn" data-diagram="${esc(n.id)}" data-index="${i}">在画布中查看</button></div></div>`).join("")}` : ""}${n.detail.length ? `<h3>详细说明</h3><div class="detail">${esc(n.detail.join("\n"))}</div>` : ""}${refs.length ? `<h3>代码位置</h3><ul>${refs.map((r) => `<li><code>${esc(r)}</code></li>`).join("")}</ul>` : ""}${n.children.length ? `<h3>包含的子节点 <span>${n.children.length}</span></h3><ul>${n.children.map((c) => `<li>${link(c)} <span class="lab">${KIND[byId.get(c).kind]}</span></li>`).join("")}</ul><p><button class="btn" data-enter="${esc(n.id)}">${ic("in")} 进入这一层</button></p>` : ""}${out.size ? `<h3>依赖 <span>${out.size}</span></h3><ul>${lst(out)}</ul>` : ""}${inn.size ? `<h3>被依赖 <span>${inn.size}</span></h3><ul>${lst(inn)}</ul>` : ""}${flows.length ? `<h3>参与的流程</h3><ul>${flows.map((f) => `<li><a tabindex="0" data-flow="${esc(f.id)}">${esc(f.title)}</a></li>`).join("")}</ul>` : ""}`;
   // The panel is narrow, so the card is a thumbnail; the canvas view renders it at full size.
   el.querySelectorAll("[data-preview]").forEach((box) => {
     const d = diagrams[Number(box.dataset.preview)];
