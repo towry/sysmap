@@ -23,19 +23,33 @@ var dagreLicense string
 //go:embed vendor/panzoom.min.js
 var panzoomJS string
 
+// pele.global.js renders Mermaid diagrams. It is embedded only when the model has one.
+//
+//go:embed vendor/pele.global.js
+var peleJS string
+
+//go:embed vendor/pele.LICENSE
+var peleLicense string
+
+type jsonDiagram struct {
+	Path string `json:"path"`
+	Text string `json:"text"`
+}
+
 type jsonNode struct {
-	ID       string   `json:"id"`
-	Kind     Kind     `json:"kind"`
-	Title    string   `json:"title"`
-	Desc     string   `json:"desc"`
-	Detail   []string `json:"detail"`
-	Refs     []string `json:"refs"`
-	Parent   string   `json:"parent"`
-	Children []string `json:"children"`
-	Mark     string   `json:"mark"`
-	FanIn    int      `json:"fanin"`
-	File     string   `json:"file"`
-	Area     string   `json:"area"`
+	ID       string        `json:"id"`
+	Kind     Kind          `json:"kind"`
+	Title    string        `json:"title"`
+	Desc     string        `json:"desc"`
+	Detail   []string      `json:"detail"`
+	Refs     []string      `json:"refs"`
+	Diagrams []jsonDiagram `json:"diagrams"`
+	Parent   string        `json:"parent"`
+	Children []string      `json:"children"`
+	Mark     string        `json:"mark"`
+	FanIn    int           `json:"fanin"`
+	File     string        `json:"file"`
+	Area     string        `json:"area"`
 }
 
 type jsonEdge struct {
@@ -81,7 +95,8 @@ func (m *Model) JSON(source string, diags []Diag) []byte {
 	for _, id := range m.Order {
 		n := m.Nodes[id]
 		v.Nodes = append(v.Nodes, jsonNode{ID: id, Kind: n.Kind, Title: n.Title, Desc: n.Desc,
-			Detail: orEmpty(n.Detail), Refs: orEmpty(n.Refs), Parent: n.Parent, Children: orEmpty(n.Children),
+			Detail: orEmpty(n.Detail), Refs: orEmpty(n.Refs), Diagrams: jsonDiagrams(n.Diagrams),
+			Parent: n.Parent, Children: orEmpty(n.Children),
 			Mark: n.Mark, FanIn: len(m.FanIn(id)), File: n.File, Area: m.Area(id)})
 	}
 	for _, e := range m.Edges {
@@ -120,17 +135,44 @@ func (m *Model) HTML(source string, diags []Diag, live bool) []byte {
 	if live {
 		liveAttr = ` data-live="1"`
 	}
+	// The renderer is most of the page, so a map without a diagram does not carry it. The
+	// vendored banner is stripped and the licence is inlined without URL schemes: a built page
+	// must not contain anything that looks like a network request.
+	peleScript := ""
+	if m.hasDiagrams() {
+		notice := strings.NewReplacer("https://", "", "http://", "").Replace(peleLicense)
+		peleScript = "<script>\n/*\nPele 1.13.0, MIT License\n" + notice + "*/\n" + stripComments(peleJS) + "\n</script>"
+	}
 	// One pass, so text inserted for one placeholder is never scanned for another.
 	return []byte(strings.NewReplacer(
 		"__TITLE__", html.EscapeString(title),
 		"__LIVE__", liveAttr,
 		"__PANZOOM__", stripComments(panzoomJS),
 		"__DAGRE__", "/*\n@dagrejs/dagre\n"+dagreLicense+"*/\n"+stripComments(dagreJS),
+		"__PELE_SCRIPT__", peleScript,
 		"__DATA__", string(m.JSON(source, diags)),
 	).Replace(template))
 }
 
-// stripComments drops the trailing source-map and licence comment lines of the vendored bundle.
+// hasDiagrams reports whether any node loaded a Mermaid file.
+func (m *Model) hasDiagrams() bool {
+	for _, id := range m.Order {
+		if len(m.Nodes[id].Diagrams) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func jsonDiagrams(in []Diagram) []jsonDiagram {
+	out := make([]jsonDiagram, 0, len(in))
+	for _, d := range in {
+		out = append(out, jsonDiagram{Path: d.Path, Text: d.Text})
+	}
+	return out
+}
+
+// stripComments drops the licence banner and the trailing source-map lines of a vendored bundle.
 func stripComments(js string) string {
 	var keep []string
 	for _, line := range strings.Split(js, "\n") {

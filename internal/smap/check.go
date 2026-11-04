@@ -228,6 +228,11 @@ func (m *Model) CheckRefs() []Diag {
 		n := m.Nodes[id]
 		root := repoRoot(n.File)
 		for i, ref := range n.Refs {
+			// Diagrams are read and checked by Load with the same fallback, so --refs must not
+			// apply the code-ref rule (repository root only) and reject a map-relative diagram.
+			if isDiagramPath(ref) {
+				continue
+			}
 			line := n.Line
 			if i < len(n.RefLines) {
 				line = n.RefLines[i]

@@ -1,0 +1,7 @@
+stateDiagram-v2
+  [*] --> Cart
+  Cart --> Reserved : stock reserved
+  Reserved --> Paid : charge captured
+  Reserved --> Cart : charge declined
+  Paid --> Shipped : handed to fulfilment
+  Shipped --> [*]

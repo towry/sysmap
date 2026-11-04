@@ -213,6 +213,193 @@ func TestHTMLIsSelfContainedAndSafeToEmbed(t *testing.T) {
 	}
 }
 
+func TestLoadPicksUpDiagramRefs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := "stateDiagram-v2\n  [*] --> Ready\n"
+	flow := "flowchart LR\n  Draft --> Paid\n"
+	writeMapFile(t, dir, "docs/state.mmd", state)
+	writeMapFile(t, dir, "docs/flow.mermaid", flow)
+	root := writeMapFile(t, dir, "maps/system.smap", `system "Diagrams"
+biz machine "Machine"
+  @ ../docs/state.mmd
+biz flow "Flow"
+  @ docs/flow.mermaid
+`)
+	src, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if HasErrors(diags) {
+		t.Fatalf("diagram refs are not errors: %v", diags)
+	}
+	if got := m.Nodes["machine"].Diagrams; len(got) != 1 || got[0].Path != "../docs/state.mmd" || got[0].Text != state {
+		t.Fatalf("near-file diagram = %+v, want %q", got, state)
+	}
+	// The first path is looked up next to maps/, then from the repository root.
+	if got := m.Nodes["flow"].Diagrams; len(got) != 1 || got[0].Path != "docs/flow.mermaid" || got[0].Text != flow {
+		t.Fatalf("root-fallback diagram = %+v, want %q", got, flow)
+	}
+	if refs := m.CheckRefs(); len(refs) != 0 {
+		t.Fatalf("--refs must not apply the code-ref root rule to diagrams: %+v", refs)
+	}
+
+	var v viewData
+	if err := json.Unmarshal(m.JSON(src, diags), &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range v.Nodes {
+		if n.ID == "machine" && (len(n.Diagrams) != 1 || n.Diagrams[0].Text != state) {
+			t.Fatalf("JSON diagram = %+v", n.Diagrams)
+		}
+		if n.ID == "flow" && (len(n.Diagrams) != 1 || n.Diagrams[0].Text != flow) {
+			t.Fatalf("JSON diagram = %+v", n.Diagrams)
+		}
+	}
+}
+
+func TestLoadReportsAMissingDiagramOnItsRefLine(t *testing.T) {
+	dir := t.TempDir()
+	root := writeMapFile(t, dir, "system.smap", `biz checkout "Checkout"
+  @ app/orders/checkout.ex:40
+  @ docs/missing.mmd
+`)
+	_, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := diagWith(diags, "does not exist")
+	if d == nil || d.Level != "error" || d.Line != 3 {
+		t.Fatalf("missing-diagram diagnostics = %+v, want an error on line 3", diags)
+	}
+	if !strings.Contains(d.Msg, `diagram "docs/missing.mmd"`) {
+		t.Fatalf("message = %s", d.Msg)
+	}
+	if len(m.Nodes["checkout"].Diagrams) != 0 {
+		t.Fatalf("a missing diagram must not be stored: %+v", m.Nodes["checkout"].Diagrams)
+	}
+}
+
+func TestDiagramRefsMustStayInsideTheRepository(t *testing.T) {
+	outside := t.TempDir()
+	secret := writeMapFile(t, outside, "secret.mmd", "stateDiagram-v2\n  [*] --> Secret\n")
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "maps"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cases := []string{
+		filepath.ToSlash(secret), // absolute
+		"../../outside.mmd",      // escapes the repository
+		"https://example.com/secret.mmd",
+	}
+	linkLine := ""
+	// The map-relative candidate is a link outside the repo while the repository-root
+	// candidate is simply missing; the containment error must win over "does not exist".
+	if err := os.Symlink(secret, filepath.Join(dir, "maps", "leak.mmd")); err == nil {
+		linkLine = "biz link \"Link\"\n  @ leak.mmd\n"
+	}
+	src := "biz absolute \"Absolute\"\n  @ " + cases[0] + "\nbiz escape \"Escape\"\n  @ " + cases[1] + "\nbiz url \"URL\"\n  @ " + cases[2] + "\n" + linkLine
+	root := writeMapFile(t, dir, "maps/system.smap", src)
+	_, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := len(cases)
+	if linkLine != "" {
+		want++
+	}
+	found := 0
+	for _, d := range diags {
+		if d.Level == "error" && strings.Contains(d.Msg, "must be relative to the .smap file and inside") {
+			found++
+		}
+	}
+	if found != want {
+		t.Fatalf("path containment errors = %d, want %d: %+v", found, want, diags)
+	}
+	for _, id := range m.Order {
+		if len(m.Nodes[id].Diagrams) != 0 {
+			t.Fatalf("refused diagram was loaded on %s: %+v", id, m.Nodes[id].Diagrams)
+		}
+	}
+}
+
+func TestHTMLEmbedsTheDiagramRendererOnlyWhenNeeded(t *testing.T) {
+	dir := t.TempDir()
+	writeMapFile(t, dir, "docs/state.mmd", "stateDiagram-v2\n  [*] --> Ready\n")
+	root := writeMapFile(t, dir, "system.smap", `core platform "Platform"
+biz machine "Machine"
+  @ docs/state.mmd
+`)
+	src, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(m.HTML(src, diags, false))
+	if !strings.Contains(page, "var pele=") {
+		t.Fatal("a map with a diagram must embed the renderer")
+	}
+	if !strings.Contains(page, "Pele 1.13.0, MIT License") || !strings.Contains(page, "Copyright (c) 2026 kepano") {
+		t.Fatal("the Pele licence notice must travel with the renderer")
+	}
+	if strings.Contains(page, "__PELE_SCRIPT__") {
+		t.Fatal("the renderer placeholder must be replaced")
+	}
+	// The only URL schemes left are SVG namespace identifiers and the panzoom bundle's
+	// repository comment, which are not requests. The vendored Pele banner and licence
+	// are stripped of schemes when embedded.
+	clean := strings.NewReplacer(
+		"https://github.com/timmywil/panzoom", "",
+		"http://www.w3.org/2000/svg", "",
+		"http://www.w3.org/1999/xhtml", "",
+	).Replace(page)
+	if strings.Contains(clean, "http://") || strings.Contains(clean, "https://") {
+		t.Fatal("a built page with a diagram must not contain a network URL")
+	}
+
+	plain := string(mustParse(t, shop).HTML("src", nil, false))
+	if strings.Contains(plain, "var pele=") || strings.Contains(plain, "Pele 1.13.0") {
+		t.Fatal("a map without diagrams must not embed the renderer")
+	}
+	if strings.Contains(plain, "__PELE_SCRIPT__") {
+		t.Fatal("the renderer placeholder must be replaced on every page")
+	}
+}
+
+func TestVersionHashCoversDiagramFiles(t *testing.T) {
+	dir := t.TempDir()
+	diagram := writeMapFile(t, dir, "docs/state.mmd", "stateDiagram-v2\n  [*] --> Ready\n")
+	root := writeMapFile(t, dir, "system.smap", `biz machine "Machine"
+  @ docs/state.mmd
+`)
+	version := func() string {
+		src, m, diags, err := Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(m.JSON(src, diags), &v); err != nil {
+			t.Fatal(err)
+		}
+		return v.Version
+	}
+	before := version()
+	if err := os.WriteFile(diagram, []byte("stateDiagram-v2\n  [*] --> Ready\n  Ready --> Done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after := version()
+	if before == after {
+		t.Fatalf("version %q did not change when the diagram changed", before)
+	}
+}
+
 func TestImpactExistingNodeWiredToNewNodeIsNotAnExtension(t *testing.T) {
 	m := mustParse(t, "core auth\nbiz orders\n  biz checkout\nbiz web\nweb -> checkout\ncheckout -> auth\n+ biz promo\npromo -> auth\ncheckout -> promo\n")
 	imp := m.Impact()

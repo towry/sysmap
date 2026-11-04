@@ -41,7 +41,7 @@ How to read what you see:
 
 - Run `sysmap spec` for the exact syntax. **Top-level lines start in column 0**, children are indented two spaces, never tabs. Ids use ASCII letters/digits/`_`/`-` (no dots), one line per node: `core ledger "Ledger" : the only door for money movement`.
 - Where new lines go: nodes and edges go before the first `flow` line, because every indented line after `flow` is read as a step of that flow (`inside a flow only steps like ...`). A top-level node written with two spaces of indent is silently read as a child of the node above it; if `impact` or `check` mentions an unexpected parent or area, check your indentation first. A flood of `indent jumps a level` errors means the same mistake.
-- Keep each level to about 5 to 15 nodes; push detail down into children or `|` lines. Put the "why" and the traps in `|` lines, and where the code is in `@ path:line`.
+- Keep each level to about 5 to 15 nodes; push detail down into children or `|` lines. Put the "why" and the traps in `|` lines, and where the code is in `@ path:line`. A Mermaid diagram is also an `@` ref: `@ docs/state.mmd` (or `.mermaid`) loads the file, resolved from the map's directory first and then the repository root. A missing diagram fails `check` with its line; the page shows it in the detail rail and on the canvas.
 - Classify honestly: `core` only if several areas really share it. Record what you could not verify as a detail line `| unverified: <what and why>` (or `| open: <the undecided question>`) on the node, so readers can list it with `sysmap find --caveats`; do not leave gaps out.
 - Draw edges at the level that matters. After editing, run `sysmap check`.
 

@@ -9,6 +9,7 @@ core platform "Platform" : shared by many business nodes; change with care
   core ledger "Ledger" : the only door for money movement
     | extra lines of detail, shown when you zoom in
     @ path/to/file.ex:12          (where to read the code)
+    @ docs/state.mmd              (a Mermaid diagram; .mmd or .mermaid)
 biz billing "Billing" : business-specific
   biz invoice "Invoice" : only it may mark an order invoiced
 ext stripe "Stripe" : outside the system
@@ -50,6 +51,15 @@ ext platform_pg "Postgres" : shared database
   the child and bind it here. 'sysmap find <word>' searches ids, titles, descriptions and
   detail lines across the composed map.
 
+diagrams
+  An @ ref whose path ends in .mmd or .mermaid loads a Mermaid diagram file. The path is
+  relative to the .smap file first, then the repository root. The page shows a preview in
+  the right rail and can draw the diagram on the canvas; 'sysmap serve' reloads when the
+  diagram changes. A missing diagram is an error on the ref line.
+  A diagram must stay inside the repository root: the nearest ancestor of the map file
+  that has .git, or the map file's own directory when there is none. Absolute paths and
+  URLs are refused. Diagram links and images are not loaded; a URL in a label stays text.
+
 reading the outline
   ←N     N nodes outside this one depend on it (a container and its child count once)
   ?N     N unverified: or open: caveat lines on this node; see 'sysmap find --caveats'
@@ -80,6 +90,7 @@ biz a "A"
 rules checked by 'sysmap check'
   error  unknown node in an edge or flow step, duplicate id, bad indent
          mount path missing, absolute or a URL; mount cycle; bad bind stub or target
+         a referenced .mmd or .mermaid diagram file is missing
   warn   a core node depends on a business node
          a business node sits directly inside a shared node (a mounted file's top level
          is judged inside that file, not by the kind of its mount node)

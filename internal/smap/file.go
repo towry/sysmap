@@ -43,14 +43,19 @@ func Load(path string) (string, *Model, []Diag, error) {
 	return l.source(m), m, l.finish(m), nil
 }
 
-// source is the root file alone for a single-file map, otherwise every file in order.
+// source is the root file alone for a single-file map, otherwise every file in order. The
+// diagram text is part of it so a changed .mmd changes the version hash the page polls.
 func (l *loader) source(m *Model) string {
-	if len(m.Files) == 1 {
-		return l.src[m.Files[0]]
-	}
 	var b strings.Builder
-	for _, f := range m.Files {
-		fmt.Fprintf(&b, "# file: %s\n%s\n", f, l.src[f])
+	if len(m.Files) == 1 {
+		b.WriteString(l.src[m.Files[0]])
+	} else {
+		for _, f := range m.Files {
+			fmt.Fprintf(&b, "# file: %s\n%s\n", f, l.src[f])
+		}
+	}
+	for _, d := range l.diagrams {
+		fmt.Fprintf(&b, "\n# diagram: %s\n%s\n", d.path, d.text)
 	}
 	return b.String()
 }

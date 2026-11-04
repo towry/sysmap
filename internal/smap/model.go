@@ -17,6 +17,12 @@ type Bind struct {
 	Line         int
 }
 
+// Diagram is a Mermaid file loaded from an `@` ref whose path ends in .mmd or .mermaid.
+type Diagram struct {
+	Path string // the ref as it was written
+	Text string
+}
+
 type Node struct {
 	ID        string
 	Kind      Kind
@@ -26,6 +32,7 @@ type Node struct {
 	Detail    []string
 	Refs      []string
 	RefLines  []int // the line each ref was written on, parallel to Refs
+	Diagrams  []Diagram
 	Parent    string
 	Children  []string
 	Line      int
