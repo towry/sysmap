@@ -63,4 +63,7 @@ rules checked by 'sysmap check'
          mount path missing, absolute or a URL; mount cycle; bad bind stub or target
   warn   a core node depends on a business node
          a flow step with no matching edge
+  --refs also checks each @ path[:line]: the path must exist and a line number must not
+         pass the end of a regular file. Paths resolve from the nearest ancestor of the
+         map file that contains .git, or from the map file's own directory.
 `

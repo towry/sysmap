@@ -1,7 +1,11 @@
 package smap
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -64,6 +68,82 @@ func (m *Model) checkEdge(e Edge, add func(line int, level, format string, args 
 		add(e.Line, "warn", "edge between %q and %q, which contain one another; draw it between siblings", e.From, e.To)
 	case from.Kind == Core && to.Kind == Biz:
 		add(e.Line, "warn", "shared node %q depends on business node %q; shared nodes should not know business nodes", e.From, e.To)
+	}
+}
+
+// CheckRefs verifies every `@ path[:line]` reference. A path is resolved from the nearest
+// ancestor of the declaring file that holds .git, or from the file's own directory when
+// there is none. A line, when given for a regular file, must not exceed its line count.
+func (m *Model) CheckRefs() []Diag {
+	var diags []Diag
+	add := func(file string, line int, format string, args ...any) {
+		diags = append(diags, Diag{File: file, Line: line, Level: "error", Msg: fmt.Sprintf(format, args...)})
+	}
+	for _, id := range m.Order {
+		n := m.Nodes[id]
+		root := repoRoot(n.File)
+		for i, ref := range n.Refs {
+			line := n.Line
+			if i < len(n.RefLines) {
+				line = n.RefLines[i]
+			}
+			path, num := splitRef(ref)
+			full := filepath.Join(root, filepath.FromSlash(path))
+			info, err := os.Stat(full)
+			if err != nil {
+				add(n.File, line, "reference %q: %s does not exist", ref, path)
+				continue
+			}
+			if num == 0 || !info.Mode().IsRegular() {
+				continue
+			}
+			data, err := os.ReadFile(full)
+			if err != nil {
+				add(n.File, line, "reference %q: cannot read %s: %v", ref, path, err)
+				continue
+			}
+			lines := bytes.Count(data, []byte("\n"))
+			if len(data) > 0 && data[len(data)-1] != '\n' {
+				lines++
+			}
+			if num > lines {
+				add(n.File, line, "reference %q: %s has only %d lines", ref, path, lines)
+			}
+		}
+	}
+	return diags
+}
+
+// splitRef separates `path:line`; a colon not followed by a number stays part of the path.
+func splitRef(ref string) (string, int) {
+	i := strings.LastIndex(ref, ":")
+	if i <= 0 {
+		return ref, 0
+	}
+	n, err := strconv.Atoi(ref[i+1:])
+	if err != nil || n < 1 {
+		return ref, 0
+	}
+	return ref[:i], n
+}
+
+// repoRoot is the nearest ancestor of file's directory that contains .git, else that
+// directory itself. The walk uses an absolute path, so the result does not depend on cwd.
+func repoRoot(file string) string {
+	own := filepath.Dir(file)
+	dir, err := filepath.Abs(own)
+	if err != nil {
+		return own
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return own
+		}
+		dir = parent
 	}
 }
 

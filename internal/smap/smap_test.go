@@ -279,6 +279,9 @@ func TestShowNamesTheChildAnEdgeComesFrom(t *testing.T) {
 func writeMapFile(t *testing.T, dir, name, src string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -886,4 +889,113 @@ core signal "Signals"
 			t.Fatalf("cross-area notes = %+v, want only signal.ingest in signal", notes)
 		}
 	})
+}
+
+// --- check --refs ---
+
+func TestCheckRefsFindsMissingFilesAndLinesPastTheEnd(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeMapFile(t, dir, "app/a.go", "one\ntwo\nthree\n")
+	writeMapFile(t, dir, "app/nonl.txt", "one\ntwo")
+	if err := os.Mkdir(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := writeMapFile(t, dir, "maps/root.smap", `system "Refs"
+biz a "A"
+  @ app/a.go:3
+  @ app/a.go:4
+  @ app/missing.go
+  @ docs
+  @ docs:99
+  @ app/nonl.txt:2
+  @ app/nonl.txt:3
+biz b "B"
+  @ app/a.go
+`)
+	_, m, diags, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if HasErrors(diags) {
+		t.Fatalf("refs must be errors only with --refs: %v", diags)
+	}
+	refDiags := m.CheckRefs()
+	if len(refDiags) != 3 {
+		t.Fatalf("ref diagnostics = %+v", refDiags)
+	}
+	want := map[int]string{
+		4: "app/a.go has only 3 lines",
+		5: "app/missing.go does not exist",
+		9: "app/nonl.txt has only 2 lines",
+	}
+	for line, text := range want {
+		found := false
+		for _, d := range refDiags {
+			if d.Level == "error" && d.File == root && d.Line == line && strings.Contains(d.Msg, text) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("line %d: no diagnostic containing %q in %+v", line, text, refDiags)
+		}
+	}
+}
+
+func TestCheckRefsResolvesMountedFilesFromTheRepositoryRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeMapFile(t, dir, "app/a.go", "one\ntwo\n")
+	child := writeMapFile(t, dir, "maps/child.smap", `biz a "A"
+  @ app/a.go:2
+  @ app/a.go:9
+`)
+	root := writeMapFile(t, dir, "maps/root.smap", `core c "C"
+  mount child.smap
+`)
+	_, m, _, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diags := m.CheckRefs()
+	if len(diags) != 1 || diags[0].File != child || diags[0].Line != 3 {
+		t.Fatalf("mounted ref diagnostics = %+v, want the bad ref at %s:3", diags, child)
+	}
+	if !strings.Contains(diags[0].Msg, "app/a.go has only 2 lines") {
+		t.Fatalf("message = %s", diags[0].Msg)
+	}
+
+	// A mounted file checked alone resolves from the same repository root, not maps/.
+	_, alone, _, err := Load(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aloneDiags := alone.CheckRefs()
+	if len(aloneDiags) != 1 || aloneDiags[0].Line != 3 {
+		t.Fatalf("ref diagnostics for the file alone = %+v", aloneDiags)
+	}
+}
+
+func TestCheckRefsFallsBackToTheMapDirectoryWithoutGit(t *testing.T) {
+	dir := t.TempDir()
+	writeMapFile(t, dir, "maps/data.txt", "one\ntwo\n")
+	root := writeMapFile(t, dir, "maps/plain.smap", `biz a "A"
+  @ data.txt:2
+  @ data.txt:3
+`)
+	_, m, _, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diags := m.CheckRefs()
+	if len(diags) != 1 || diags[0].Line != 3 {
+		t.Fatalf("ref diagnostics = %+v, want only the line past the end", diags)
+	}
+	if !strings.Contains(diags[0].Msg, "data.txt has only 2 lines") {
+		t.Fatalf("message = %s", diags[0].Msg)
+	}
 }

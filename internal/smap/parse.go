@@ -94,6 +94,7 @@ func Parse(src string) (*Model, []Diag) {
 			}
 			if ref := strings.TrimSpace(t[1:]); ref != "" {
 				last.Refs = append(last.Refs, ref)
+				last.RefLines = append(last.RefLines, ln)
 			}
 
 		case mountRe.MatchString(t):

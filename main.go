@@ -18,7 +18,7 @@ const usage = `sysmap: a system map an agent can maintain and a person can brows
   sysmap outline [file] [-d N] [id]   tree of the system (default depth 2), or of one node
   sysmap show <id> [file]             zoom into one node: details, children, dependencies, flows
   sysmap find <query> [file]          search ids, titles, descriptions and detail lines
-  sysmap check [file]                 validate references and boundary rules
+  sysmap check [file] [--refs]        validate references, boundary rules and @ code refs
   sysmap impact [file] [--json]       reach of planned nodes (+ new, ~ changed)
   sysmap accept [file]                drop the + and ~ markers in every file once shipped
   sysmap build [file] [-o out.html]   write one shareable HTML file
@@ -30,7 +30,8 @@ const usage = `sysmap: a system map an agent can maintain and a person can brows
 file ends in .smap or contains a /; any other word is a node id (for find, the query).
 A node id is local to its file and may not contain a dot; a mounted node is addressed as
 <mount>.<id>, and a bind target may be dotted. file defaults to $SYSMAP_FILE, system.smap,
-then .sysmap/system.smap.
+then .sysmap/system.smap. --refs resolves @ path[:line] from the nearest ancestor of the
+map file that contains .git, or from the map file's own directory.
 `
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -64,6 +65,7 @@ func run(args []string) int {
 	out := fs.String("o", "sysmap.html", "output file")
 	addr := fs.String("addr", "127.0.0.1:4317", "listen address")
 	asJSON := fs.Bool("json", false, "machine-readable output")
+	refs := fs.Bool("refs", false, "verify @ path[:line] references")
 	positional, err := parseInterleaved(fs, rest)
 	if err != nil {
 		return 2
@@ -125,6 +127,9 @@ func run(args []string) int {
 	src, m, diags, err := smap.Load(path)
 	if err != nil {
 		return fail("%v", err)
+	}
+	if cmd == "check" && *refs {
+		diags = append(diags, m.CheckRefs()...)
 	}
 	for _, d := range diags {
 		file := d.File

@@ -25,6 +25,7 @@ type Node struct {
 	Mark      string // "" | "+" planned new | "~" planned change
 	Detail    []string
 	Refs      []string
+	RefLines  []int // the line each ref was written on, parallel to Refs
 	Parent    string
 	Children  []string
 	Line      int

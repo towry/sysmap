@@ -13,7 +13,7 @@ sysmap spec                       # the file format
 sysmap outline [file] [-d N] [id] # tree, default depth 2
 sysmap show <id> [file]           # one node: details, children, dependencies, flows
 sysmap find <word> [file]         # search ids, titles, descriptions, detail lines
-sysmap check [file]               # references and boundary rules
+sysmap check [file] [--refs]      # references, boundary rules and @ code refs
 sysmap impact [file] [--json]     # reach of planned nodes
 sysmap accept [file]              # drop + and ~ after the change shipped
 sysmap build [file] -o map.html   # one shareable HTML file, no network needed
