@@ -1,3 +1,5 @@
 /sysmap
 /*.html
 /dist/
+.amp/portals/
+.amp/in/

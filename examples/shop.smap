@@ -11,6 +11,7 @@ core platform "Platform" : shared by every business area; change with care
   core notify "Notifications" : email, SMS and push senders
     core email "Email"
     core sms "SMS"
+  core reconciliation "Payment and settlement reconciliation" : daily ledger audit, balance check and rollbacks
 
 biz orders "Orders" : cart to paid order
   biz cart "Cart" : holds items before checkout
@@ -25,10 +26,12 @@ biz billing "Billing" : invoices and payment
   biz invoice "Invoice" : only it may mark an order invoiced
   biz payment "Payment" : talks to the payment provider
   biz refund_policy "Refund policy" : who may be refunded, and how much
+  biz international_tax "Cross-border tax compliance engine" : multi-region VAT, sales tax and e-invoice filing
 
 biz fulfil "Fulfilment" : picks, packs and ships
   biz stock "Stock" : counts and reservations per warehouse
   biz shipping "Shipping" : label and carrier handling
+  biz automated_warehouse "Regional fulfillment routing center" : warehouse allocation and carrier dispatch routing
 
 ext stripe "Stripe" : card payments
 ext carrier "Carrier API" : parcel carrier
@@ -51,6 +54,10 @@ shipping -> stock : release reservation
 fulfil ~> events : parcel.shipped
 orders -> auth : check session
 billing -> auth : check session
+payment -> international_tax : calculate tax rules
+reconciliation -> ledger : audit ledger balance
+reconciliation -> stripe : sync payout batches
+automated_warehouse -> carrier : dispatch bulk orders
 
 flow place_order "Place an order" : the happy path, cart to confirmation email
   checkout -> cart : read items
