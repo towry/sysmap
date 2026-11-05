@@ -430,7 +430,9 @@ function buildView() {
 // `groups` (optional) maps a node to the area box it sits in; dagre then lays the boxes out too.
 function layout(ids, edges, dir, groups) {
   const g = new dagre.graphlib.Graph({compound: !!groups});
-  g.setGraph({rankdir: dir, nodesep: 26, ranksep: isNarrow() ? 60 : dir === "LR" ? 112 : 84, marginx: PAD, marginy: PAD});
+  // Two edges that run in opposite directions between the same pair need two labels in one gap.
+  const twoWay = edges.some((e) => edges.some((f) => f.a === e.b && f.b === e.a));
+  g.setGraph({rankdir: dir, nodesep: 26, ranksep: (isNarrow() ? 60 : dir === "LR" ? 112 : 84) + (twoWay ? 48 : 0), marginx: PAD, marginy: PAD});
   g.setDefaultEdgeLabel(() => ({}));
   for (const id of ids) g.setNode(id, {width: W, height: H});
   for (const e of edges) g.setEdge(e.a, e.b);
