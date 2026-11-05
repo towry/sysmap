@@ -45,7 +45,7 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .ic{width:14px;height:14px;flex:none}
 .mono{font-family:var(--mono)}
 
-#app{display:grid;grid-template-columns:204px minmax(0,1fr) 320px;height:100vh}
+#app{display:grid;grid-template-columns:250px minmax(0,1fr) 320px;height:100vh}
 
 /* sidebar */
 #side{overflow:auto;border-right:1px solid var(--ui);padding:14px 8px 14px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px}
@@ -109,7 +109,7 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .navbtns .btn{min-height:28px;width:28px}
 .btn:disabled{opacity:.35;cursor:default}
 .btn:disabled:hover{background:var(--bg);border-color:var(--ui2)}
-h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:0;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:0;flex:none;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #lead{color:var(--tx2);font-size:14px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #stats{color:var(--tx2);font-size:12.5px;flex:none;margin-left:auto}
 #card{flex:1;min-height:300px;display:flex;flex-direction:column;position:relative;border:1px solid var(--ui);background:var(--card);border-radius:8px;overflow:hidden}
@@ -121,7 +121,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 .pele-theme{--pele-bg:var(--card);--pele-fg:var(--tx);--pele-muted:var(--tx2);--pele-line:var(--edge);--pele-surface:var(--bg2);--pele-surface-alt:var(--ui);--pele-border:var(--ui3);--pele-accent:var(--accent);--pele-critical:var(--chg);--pele-font:var(--sans);--pele-font-mono:var(--mono);--pele-radius:4px}
 #diagramPane{position:absolute;left:0;top:0;box-sizing:border-box;background:var(--card);display:flex;align-items:center;justify-content:center}
 #diagramPane svg{display:block}
-#canvas.diagram #areas,#canvas.diagram #edges,#canvas.diagram #nodes{display:none}
+#canvas.diagram #areas,#canvas.diagram #edges,#canvas.diagram #pills,#canvas.diagram #nodes{display:none}
 #tools{display:flex;gap:4px;align-items:center;font-size:13px;color:var(--tx2)}
 #tools .btn{min-height:28px;padding:0 8px;border-color:transparent;background:transparent}
 #tools .btn.icon{width:28px;padding:0}
@@ -149,15 +149,16 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 .cardfoot #tools{margin-left:auto}
 
 /* graph */
+#edges,#pills{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .edge{fill:none;stroke:var(--edge)}
 .edge.hot{stroke:var(--tx)}
 #ar path{fill:var(--edge)}#arh path{fill:var(--tx)}
-.pill{fill:var(--bg);stroke:var(--ui3)}
+.pill{fill:var(--bg);stroke:var(--ui3);pointer-events:auto}
 .pill.step{fill:var(--tx);stroke:var(--tx)}
-.pilltx{font-size:12px;fill:var(--tx);text-anchor:middle}
+.pilltx{font-size:12px;fill:var(--tx);text-anchor:middle;pointer-events:auto}
 .pilltx.step{fill:var(--bg)}
 .node{--k:var(--ext);position:absolute;border:1px solid color-mix(in srgb,var(--k) 60%,var(--card));border-radius:8px;
-  background:color-mix(in srgb,var(--k) 9%,var(--node));padding:9px 12px;cursor:pointer;overflow:hidden;
+  background:color-mix(in srgb,var(--k) 9%,var(--node));padding:8px 12px;cursor:pointer;overflow:hidden;
   transition:opacity .15s,background-color .12s,border-color .12s}
 .node.core{--k:var(--core)}.node.biz{--k:var(--biz)}
 .node.ext{border-style:dashed}
@@ -171,9 +172,9 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 .node.sel .title{color:var(--accent)}
 .node.centre:not(.sel){outline:calc(2px * var(--inv,1)) dashed var(--accent);outline-offset:calc(2px * var(--inv,1))}
 .node:focus-visible{outline-color:var(--focus);outline-offset:4px}
-.node .head{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
-.node .title{font-weight:650;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.node .desc{font-size:12.5px;line-height:1.4;color:var(--tx2);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty}
+.node .head{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.node .title{font-weight:650;font-size:14.5px;line-height:1.25;flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word}
+.node .desc{font-size:12px;line-height:1.35;color:var(--tx2);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty;word-break:break-word}
 .node .foot{position:absolute;left:12px;right:12px;bottom:7px;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden;font-size:12.5px;color:var(--tx2)}
 .node .kind{font-weight:650}
 .node.core .kind{color:var(--core-tx)}.node.biz .kind{color:var(--biz-tx)}
@@ -236,9 +237,9 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 /* Changing level plays in two beats: the old cards fade out, then the new ones come in one after
    another, left to right, the edges last. Going in starts a little smaller, going out a little larger. */
 .node.leaving{opacity:0!important;transform:scale(.97);transition:opacity .12s ease-in,transform .12s ease-in}
-#edges.leaving,#areas.leaving{opacity:0;transition:opacity .1s ease-in}
+#edges.leaving,#pills.leaving,#areas.leaving{opacity:0;transition:opacity .1s ease-in}
 .node.enter{animation:nodeIn .26s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i) * 42ms)}
-#edges.enter{animation:fadeIn .3s ease-out both;animation-delay:var(--edge-delay)}
+#edges.enter,#pills.enter{animation:fadeIn .3s ease-out both;animation-delay:var(--edge-delay)}
 #areas.enter{animation:fadeIn .25s ease-out both}
 @keyframes nodeIn{from{opacity:0;transform:translateY(6px) scale(var(--from,1))}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -275,7 +276,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
     </div>
     <section id="card">
       <div id="diagramBar" hidden><span class="lab">Mermaid 图</span><code id="diagramPath"></code><button class="btn" id="backToMap">返回架构图 <span class="lab">Esc</span></button></div>
-      <div id="viewport"><div id="canvas"><div id="areas"></div><svg id="edges"></svg><div id="nodes"></div><div id="diagramPane" class="pele-theme" hidden></div></div></div>
+      <div id="viewport"><div id="canvas"><div id="areas"></div><svg id="edges"></svg><div id="nodes"></div><svg id="pills"></svg><div id="diagramPane" class="pele-theme" hidden></div></div></div>
       <div class="cardfoot"><span class="lg"><i style="border-color:var(--core);background:color-mix(in srgb,var(--core) 14%,var(--node))"></i>通用边界</span><span class="lg"><i style="border-color:var(--biz);background:color-mix(in srgb,var(--biz) 14%,var(--node))"></i>业务节点</span><span class="lg"><i style="border-color:var(--ext);border-style:dashed"></i>外部系统</span><span class="lg"><i style="border-color:var(--new)"></i>计划新增</span><span class="lg"><i style="border-color:var(--chg)"></i>计划修改</span><span class="lg" title="线上的数字是这两块之间的依赖条数;线从依赖方指向被依赖方"><i class="cnt">2</i>线上数字 = 依赖条数</span><div id="tools">        <span id="hops" hidden><button class="btn" data-hops="1">1 步</button><button class="btn" data-hops="2">2 步</button><button class="btn" data-hops="3">3 步</button></span>        <button class="btn" id="impactOff" hidden>退出这个视图</button>        <button class="btn" id="outer" aria-pressed="false" title="同时画出这一层之外、与它有关联的节点">层外关联</button>        <button class="btn icon" data-zoom="-" aria-label="缩小"><svg class="ic" width="14" height="14"><use href="#i-minus"/></svg></button><output id="zlabel"></output><button class="btn icon" data-zoom="+" aria-label="放大"><svg class="ic" width="14" height="14"><use href="#i-plus"/></svg></button><button class="btn" data-zoom="auto" title="默认大小;图太宽时缩小(不小于 75%)">默认</button><button class="btn" data-zoom="fit" title="把整张图放进窗口"><svg class="ic" width="14" height="14"><use href="#i-fit"/></svg>适应</button>      </div></div>
     </section>
   </main>
@@ -288,7 +289,7 @@ __PELE_SCRIPT__
 __BADGE_ASSETS__<script>
 "use strict";
 const KIND = {core: "通用", biz: "业务", ext: "外部"};
-let W = 216, H = 100;
+let W = 240, H = 108;
 const PAD = 16;
 const isNarrow = () => innerWidth < 700;
 const $ = (id) => document.getElementById(id);
@@ -432,7 +433,7 @@ function layout(ids, edges, dir, groups) {
   const g = new dagre.graphlib.Graph({compound: !!groups});
   // Two edges that run in opposite directions between the same pair need two labels in one gap.
   const twoWay = edges.some((e) => edges.some((f) => f.a === e.b && f.b === e.a));
-  g.setGraph({rankdir: dir, nodesep: 26, ranksep: (isNarrow() ? 60 : dir === "LR" ? 112 : 84) + (twoWay ? 48 : 0), marginx: PAD, marginy: PAD});
+  g.setGraph({rankdir: dir, nodesep: 32, ranksep: (isNarrow() ? 64 : dir === "LR" ? 132 : 96) + (twoWay ? 48 : 0), marginx: PAD, marginy: PAD});
   g.setDefaultEdgeLabel(() => ({}));
   for (const id of ids) g.setNode(id, {width: W, height: H});
   for (const e of edges) g.setEdge(e.a, e.b);
@@ -487,7 +488,7 @@ function flowEdges() {
 
 const textW = (t) => [...t].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 12 : 7), 0);
 // Labels must fit the gap between two columns, or the next node covers them.
-function fitLabel(t, max = 92) {
+function fitLabel(t, max = 140) {
   if (textW(t) <= max) return t;
   let out = "";
   for (const c of t) { if (textW(out + c + "…") > max) break; out += c; }
@@ -528,7 +529,8 @@ function renderDiagram() {
 }
 
 function renderMap() {
-  W = isNarrow() ? 170 : 216; // phones: narrower nodes so a level fits the screen
+  W = isNarrow() ? 170 : 240; // phones: narrower nodes so a level fits the screen
+  H = isNarrow() ? 96 : 108;
   if (state.diagram) { renderDiagram(); return; }
   $("diagramBar").hidden = true;
   $("diagramPane").hidden = true;
@@ -563,14 +565,15 @@ function renderMap() {
   const layoutKey = `${viewKey()}|${v.ids.join("|")}|${width}x${height}|${isNarrow()}`;
   if (layoutKey !== lastLayoutKey) { lastLayoutKey = layoutKey; if (viewMode !== "free") applyView(); }
   $("areas").innerHTML = boxes.map((b) => `<div class="area" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><span>${esc(byId.get(b.id).title)}</span></div>`).join("");
-  const svg = $("edges");
+  const svg = $("edges"), pillsSvg = $("pills");
   svg.setAttribute("width", cvs.style.width); svg.setAttribute("height", cvs.style.height);
+  pillsSvg.setAttribute("width", cvs.style.width); pillsSvg.setAttribute("height", cvs.style.height);
 
   let paths = '<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker><marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>';
   // Labels sit on their own line; when two edges meet at one node their midpoints collide,
   // so each label tries other places along the line and takes the first one that is free.
-  let pills = ""; // drawn after every line, so no line is drawn across a label
-  const taken = v.ids.map((id) => ({x: pos.get(id).x, y: pos.get(id).y, w: W, h: H, g: 2}));
+  let pills = ""; // rendered in #pills above #nodes so node cards never obscure labels
+  const taken = v.ids.map((id) => ({x: pos.get(id).x, y: pos.get(id).y, w: W, h: H, g: 8}));
   for (const e of v.edges) {
     const pts = points.get(e.a + "\u0000" + e.b);
     const r = route(pts);
@@ -584,10 +587,14 @@ function renderMap() {
     else if (hot) text = e.count > 1 ? e.count + " 条依赖" : (e.labels[0] || "");
     else if (e.count > 1 && !sel && !state.flow) text = String(e.count);
     if (text) {
-      const shown = fitLabel(text), cls = steps ? " step" : "", pw = textW(shown) + 12;
+      const shown = fitLabel(text), cls = steps ? " step" : "", pw = textW(shown) + 14;
       let at = r.mid, fewest = Infinity;
       // Along the line first; when the line is shorter than the labels, step just above or below it.
-      for (const [t, dy] of [[0.5, 0], [0.4, 0], [0.6, 0], [0.3, 0], [0.7, 0], [0.2, 0], [0.8, 0], [0.5, 24], [0.5, -24], [0.5, 48], [0.5, -48]]) {
+      for (const [t, dy] of [
+        [0.5, 0], [0.4, 0], [0.6, 0], [0.3, 0], [0.7, 0],
+        [0.5, 24], [0.5, -24], [0.4, 24], [0.4, -24], [0.6, 24], [0.6, -24],
+        [0.5, 48], [0.5, -48]
+      ]) {
         const m = pointAt(pts, t), c = {x: m.x, y: m.y + dy};
         const n = taken.filter((b) => hits({x: c.x - pw / 2, y: c.y - 10, w: pw, h: 20}, b)).length;
         if (n < fewest) { fewest = n; at = c; }
@@ -597,7 +604,8 @@ function renderMap() {
       pills += `<g><title>${esc(text)}</title><rect class="pill${cls}" x="${at.x - pw / 2}" y="${at.y - 10}" width="${pw}" height="20" rx="10"/><text class="pilltx${cls}" x="${at.x}" y="${at.y + 4}">${esc(shown)}</text></g>`;
     }
   }
-  svg.innerHTML = paths + pills;
+  svg.innerHTML = paths;
+  pillsSvg.innerHTML = pills;
 
   let html = "";
   const rank = new Map([...v.ids].sort((a, b) => pos.get(a).x + pos.get(a).y - (pos.get(b).x + pos.get(b).y)).map((id, i) => [id, i]));
@@ -616,12 +624,19 @@ function renderMap() {
     const dep = n.kind === "core" && n.fanin ? `<span class="dep">被 ${n.fanin} 个依赖</span>` : "";
     const outer = v.ghost.has(id) ? "<span>· 层外</span>" : special() && !boxes.length && par(id) ? `<span>· ${esc(byId.get(par(id)).title)}</span>` : "";
     const kids = n.children.length ? `<span class="kids" title="包含 ${n.children.length} 个子节点,点这里或双击进入" data-kids>${ic("in")} ${n.children.length}</span>` : "";
-    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.id)}"><div class="head"><span class="title">${esc(n.title)}</span>${tag}</div><div class="desc">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}__TASK_BADGE____DIAG_BADGE__${kids}</div></div>`;
+    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.title)} (${esc(n.id)})"><div class="head"><span class="title" title="${esc(n.title)}">${esc(n.title)}</span>${tag}</div><div class="desc" title="${esc(n.desc)}">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}__TASK_BADGE____DIAG_BADGE__${kids}</div></div>`;
   }
-  const edgesEl = $("edges"), areasEl = $("areas");
-  edgesEl.classList.remove("leaving", "enter"); areasEl.classList.remove("leaving", "enter");
+  const edgesEl = $("edges"), pillsEl = $("pills"), areasEl = $("areas");
+  edgesEl.classList.remove("leaving", "enter"); pillsEl.classList.remove("leaving", "enter"); areasEl.classList.remove("leaving", "enter");
   if (anim) { void areasEl.getBoundingClientRect(); areasEl.classList.add("enter"); }
-  if (anim) { edgesEl.style.setProperty("--edge-delay", Math.min(v.ids.length, 10) * 42 + 120 + "ms"); void edgesEl.getBoundingClientRect(); edgesEl.classList.add("enter"); }
+  if (anim) {
+    const delay = Math.min(v.ids.length, 10) * 42 + 120 + "ms";
+    edgesEl.style.setProperty("--edge-delay", delay);
+    pillsEl.style.setProperty("--edge-delay", delay);
+    void edgesEl.getBoundingClientRect();
+    edgesEl.classList.add("enter");
+    pillsEl.classList.add("enter");
+  }
   $("nodes").innerHTML = html || '<div class="empty">这一层还没有节点</div>';
 }
 
@@ -633,15 +648,20 @@ function renderPageHead() {
     const chain = [{id: "", t: D.title || "系统"}, ...anc(n.id).reverse().concat([n.id]).map((i) => ({id: i, t: byId.get(i).title}))];
     $("crumbs").innerHTML = chain.map((c) => `<a tabindex="0" data-scope="${esc(c.id)}">${esc(c.t)}</a><span class="sep">${ic("chev")}</span>`).join("") + "<b>Mermaid 图</b>";
     $("scopeTitle").textContent = n.title;
+    $("scopeTitle").title = n.title;
     $("lead").textContent = d ? d.path : "";
+    $("lead").title = d ? d.path : "";
     $("lead").hidden = isNarrow(); // no room for it beside the title on a phone
     $("stats").textContent = "";
     return;
   }
   if (state.hood) {
     $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>邻域视图</b>`;
-    $("scopeTitle").textContent = `「${byId.get(state.hood).title}」周围 ${state.hops} 步`;
+    const hTitle = `「${byId.get(state.hood).title}」周围 ${state.hops} 步`;
+    $("scopeTitle").textContent = hTitle;
+    $("scopeTitle").title = hTitle;
     $("lead").textContent = "不分层级;线从依赖方指向被依赖方,框是所在区域";
+    $("lead").title = $("lead").textContent;
     $("lead").hidden = isNarrow(); // no room for it beside the title on a phone
     $("stats").textContent = `${buildView().ids.length} 个节点`;
     return;
@@ -649,8 +669,11 @@ function renderPageHead() {
   if (state.impact) {
     const one = state.impact !== "*" ? byId.get(state.impact) : null;
     $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>影响视图</b>`;
-    $("scopeTitle").textContent = one ? `「${one.title}」的影响范围` : "全部计划改动的影响范围";
+    const imTitle = one ? `「${one.title}」的影响范围` : "全部计划改动的影响范围";
+    $("scopeTitle").textContent = imTitle;
+    $("scopeTitle").title = imTitle;
     $("lead").textContent = "线从依赖方指向被依赖方,框是所在区域";
+    $("lead").title = $("lead").textContent;
     $("lead").hidden = isNarrow();
     $("stats").textContent = `${D.impact.affected.length} 个已有节点受影响`;
     return;
@@ -658,8 +681,11 @@ function renderPageHead() {
   const scope = state.scope ? byId.get(state.scope) : null;
   const chain = [{id: "", t: D.title || "系统"}, ...anc(state.scope).reverse().concat(state.scope ? [state.scope] : []).map((i) => ({id: i, t: byId.get(i).title}))];
   $("crumbs").innerHTML = chain.map((c, i) => (i === chain.length - 1 ? `<b>${esc(c.t)}</b>` : `<a tabindex="0" data-scope="${esc(c.id)}">${esc(c.t)}</a><span class="sep">${ic("chev")}</span>`)).join("");
-  $("scopeTitle").textContent = scope ? scope.title : (D.title || "系统地图");
+  const sTitle = scope ? scope.title : (D.title || "系统地图");
+  $("scopeTitle").textContent = sTitle;
+  $("scopeTitle").title = sTitle;
   $("lead").textContent = scope ? scope.desc : D.desc;
+  $("lead").title = $("lead").textContent;
   $("lead").hidden = !$("lead").textContent;
   const subtree = scope ? D.nodes.filter((n) => inSub(n.id, scope.id)).length - 1 : D.nodes.length;
   $("stats").textContent = scope ? `包含 ${subtree} 个节点` : `${D.nodes.length} 个节点 · ${D.edges.length} 条依赖 · ${D.flows.length} 个业务流程`;
@@ -729,15 +755,15 @@ function renderSide() {
     const mk = n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span>` : "";
     const hit = !n.mark && causes(id).length ? `<span class="tag hit" title="${esc(causeText(id))}">波及</span>` : "";
     const fan = n.kind === "core" && n.fanin ? `<span class="n" title="${n.fanin} 个节点依赖它">${n.fanin}</span>` : "";
-    let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}">${caret}<span class="dot ${n.kind}"></span><span class="t">${esc(n.title)}</span>${mk}__TASK_BADGE____DIAG_BADGE__${hit}${fan}</div>`;
+    let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}" title="${esc(n.title)}">${caret}<span class="dot ${n.kind}"></span><span class="t" title="${esc(n.title)}">${esc(n.title)}</span>${mk}__TASK_BADGE____DIAG_BADGE__${hit}${fan}</div>`;
     if (isOpen && n.children.length) html += `<div class="kids-rule">${n.children.map(walk).join("")}</div>`;
     return html;
   };
   $("outline").innerHTML = roots().map(walk).join("") || '<div class="empty">没有匹配的节点</div>';
   const items = D.impact.items.filter((it) => it.dependents.length);
-  const row = (id, extra, cls) => `<div class="orow irow ${cls} ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}"><span class="dot ${byId.get(id).kind}"></span><span class="t">${esc(byId.get(id).title)}</span>${extra}</div>`;
+  const row = (id, extra, cls) => `<div class="orow irow ${cls} ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}" title="${esc(byId.get(id).title)}"><span class="dot ${byId.get(id).kind}"></span><span class="t" title="${esc(byId.get(id).title)}">${esc(byId.get(id).title)}</span>${extra}</div>`;
   $("impactList").innerHTML = items.length ? `<div class="group">本次改动波及 ${D.impact.affected.length} 个已有节点 <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; return row(d, `<span class="hint" title="${esc(via.map((x) => byId.get(x).title).join(" → "))}">${via.length > 2 ? "经 " + esc(byId.get(via[1]).title) : "直接"}</span>`, "sub"); }).join("")).join("") : "";
-  $("flows").innerHTML = D.flows.length ? `<div class="group">业务流程</div>` + D.flows.map((f) => `<div class="frow ${state.flow === f.id ? "sel" : ""}" tabindex="0" data-flow="${esc(f.id)}"><span class="t">${esc(f.title)}</span><span class="n">${f.steps.length} 步</span></div>`).join("") : "";
+  $("flows").innerHTML = D.flows.length ? `<div class="group">业务流程</div>` + D.flows.map((f) => `<div class="frow ${state.flow === f.id ? "sel" : ""}" tabindex="0" data-flow="${esc(f.id)}" title="${esc(f.title)}"><span class="t" title="${esc(f.title)}">${esc(f.title)}</span><span class="n">${f.steps.length} 步</span></div>`).join("") : "";
 }
 
 // Who a node is affected by: each planned node that reaches it, with the chain of nodes between.
@@ -883,7 +909,7 @@ function renderAll() {
   if (pendingRender) { pendingFromHistory = pendingFromHistory || fromHistory; return; } // a render already waits for the fade-out; it reads the latest state
   if ((state.scope !== shownScope || viewKey() !== shownKey) && !firstRender && !calm.matches) {
     document.querySelectorAll(".node").forEach((n) => n.classList.add("leaving"));
-    $("edges").classList.add("leaving"); $("areas").classList.add("leaving");
+    $("edges").classList.add("leaving"); $("pills").classList.add("leaving"); $("areas").classList.add("leaving");
     pendingFromHistory = fromHistory; // the popstate handler clears its flag before this timer fires
     pendingRender = setTimeout(() => { pendingRender = 0; fromHistory = pendingFromHistory; renderNow(); fromHistory = false; }, 130);
     return;
