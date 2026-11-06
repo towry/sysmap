@@ -326,6 +326,7 @@ function setData(data) {
 const special = () => state.impact || state.hood; // a cross-level view is on: it ignores the current level
 const viewKey = () => state.impact ? "i:" + state.impact : state.hood ? "h:" + state.hood + ":" + state.hops : "";
 const isDiagramRef = (r) => /\.(mmd|mermaid)$/i.test(r);
+const wiredCount = (it) => it.mark === "+" ? it.dependents.filter((d) => it.paths[d] && it.paths[d].length === 2).length : 0;
 const diagramAt = (id, i) => { const n = byId.get(id); return (n && n.diagrams && (n.diagrams[i] || n.diagrams[0])) || null; };
 // Leaving the diagram keeps the selected node and the scope, so the same architecture level comes back.
 function leaveDiagram() {
@@ -685,9 +686,9 @@ function renderPageHead() {
     $("lead").textContent = "线从依赖方指向被依赖方,框是所在区域";
     $("lead").title = $("lead").textContent;
     $("lead").hidden = isNarrow();
-    const s = D.impact.summary, wired = new Set(s.wired);
+    const s = D.impact.summary;
     const oneIt = one ? D.impact.items.find((i) => i.id === one.id) : null;
-    const wCount = oneIt ? (oneIt.mark === "+" ? oneIt.dependents.filter((d) => wired.has(d) && oneIt.paths[d] && oneIt.paths[d].length === 2).length : 0) : s.wired.length;
+    const wCount = oneIt ? wiredCount(oneIt) : s.wired.length;
     const iCount = oneIt ? oneIt.dependents.length - wCount : s.inspect.length;
     const st = [wCount ? `${wCount} 个要一起改` : "", iCount ? `${iCount} 个关联节点需检查` : ""].filter(Boolean);
     $("stats").textContent = st.join(" · ") || "不改动任何已有节点";
@@ -850,7 +851,7 @@ function pathTree(it) {
   const draw = (id, depth) => [...(kids.get(id) || [])].sort().map((c) => {
     const n = byId.get(c), isBox = inSub(id, c);
     const tag = isBox ? '<span class="lab">所在容器 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
-    const hint = isBox ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
+    const hint = isBox || n.mark ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
     return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${hint}</div>${draw(c, depth + 1)}</div>`;
   }).join("");
   return `<div class="ptree"><div class="row root">${esc(byId.get(it.id).title)} <span class="lab">${it.mark === "+" ? "新增" : "修改"}</span></div>${draw(it.id, 0)}</div>`;
@@ -859,7 +860,6 @@ function pathTree(it) {
 function impactBox(only) {
   const im = D.impact;
   if (!im.items.length) return "";
-  const wired = new Set(im.summary.wired);
   const rows = (only ? [only] : im.items).map((it) => {
     const parts = [];
     const unchangedCore = it.reusesCore.filter((c) => !byId.get(c).mark);
@@ -869,8 +869,7 @@ function impactBox(only) {
     if (it.dependsBiz.length) parts.push(`依赖业务节点:${it.dependsBiz.map(link).join("、")}`);
     if (it.dependsExt.length) parts.push(`依赖外部系统:${it.dependsExt.map(link).join("、")}`);
     if (it.dependents.length) {
-      const wCount = it.mark === "+" ? it.dependents.filter((d) => wired.has(d) && it.paths[d] && it.paths[d].length === 2).length : 0;
-      const iCount = it.dependents.length - wCount;
+      const wCount = wiredCount(it), iCount = it.dependents.length - wCount;
       const desc = [wCount ? `直接调用新节点、要一起改的已有节点 ${wCount} 个` : "", iCount ? `需检查的关联节点 ${iCount} 个` : ""].filter(Boolean).join("，");
       parts.push(`${desc},依赖路径:${pathTree(it)}<button class="btn" data-impact="${esc(it.id)}">在画布上看影响路径</button>`);
     }

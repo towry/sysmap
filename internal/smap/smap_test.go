@@ -461,6 +461,20 @@ func TestImpactEdgeToContainerReachesItsChangedChild(t *testing.T) {
 			t.Fatalf("edges %q gave path %q, want direct web>checkout", edges, got)
 		}
 	}
+
+	// Inner container wins over outer container regardless of declaration order.
+	for _, edges := range []string{"web -> outer\nweb -> inner\n", "web -> inner\nweb -> outer\n"} {
+		nested := mustParse(t, "biz web\nbiz outer\n  biz inner\n    ~ biz checkout\n"+edges).Impact()
+		if got := strings.Join(nested.Items[0].Paths["web"], ">"); got != "web>inner>checkout" {
+			t.Fatalf("edges %q gave path %q, want web>inner>checkout", edges, got)
+		}
+	}
+
+	// A node both wired to a + node and dependent on a ~ node appears only in Wired, not Inspect.
+	mixed := mustParse(t, "biz caller\n~ biz existing\n+ biz added\nadded -> existing\ncaller -> existing\ncaller -> added\n").Impact()
+	if strings.Join(mixed.Summary.Wired, ",") != "caller" || len(mixed.Summary.Inspect) != 0 {
+		t.Fatalf("wired must take precedence over inspect: %+v", mixed.Summary)
+	}
 }
 
 func TestImpactNamesAChangedExternalSystemAsExternal(t *testing.T) {
