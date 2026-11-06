@@ -343,7 +343,11 @@ const par = (id) => (byId.get(id) || {}).parent || "";
 function anc(id) { const a = []; for (let p = par(id); p; p = par(p)) a.push(p); return a; }
 const inSub = (id, root) => id === root || anc(id).includes(root);
 const roots = () => D.nodes.filter((n) => !n.parent).map((n) => n.id);
-const names = (ids) => ids.map((i) => esc(byId.get(i).title)).join("、");
+const flat = (t) => t.toLowerCase().replace(/[\s_.-]+/g, "");
+const shortId = (id) => id.split(".").pop();
+const hasCodeId = (id) => flat(byId.get(id).title).includes(flat(shortId(id)));
+const nameWithId = (id) => { const n = byId.get(id); return hasCodeId(id) ? esc(n.title) : `${esc(n.title)} (<code>${esc(shortId(id))}</code>)`; };
+const names = (ids) => ids.map(nameWithId).join("、");
 
 // The node that stands for `id` in the map of the current scope: the scope's child that
 // contains it, or, for something outside the scope, the sibling-level node it lives in.
@@ -638,9 +642,10 @@ function renderMap() {
     const centre = state.hood === id ? '<span class="tag centre">中心</span>' : "";
     const tag = centre + (n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新增" : "修改"}</span>` : (affected.has(id) ? `<span class="tag hit" title="${esc(causeText(id))}">${wired.has(id) ? "要一起改" : "需检查"}</span>` : ""));
     const dep = n.kind === "core" && n.fanin ? `<span class="dep">被 ${n.fanin} 个依赖</span>` : "";
+    const codeTag = hasCodeId(id) ? "" : `<span>· ${esc(shortId(id))}</span>`;
     const outer = v.ghost.has(id) ? "<span>· 层外</span>" : special() && !boxes.length && par(id) ? `<span>· ${esc(byId.get(par(id)).title)}</span>` : "";
     const kids = n.children.length ? `<span class="kids" title="包含 ${n.children.length} 个子节点,点这里或双击进入" data-kids>${ic("in")} ${n.children.length}</span>` : "";
-    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.title)} (${esc(n.id)})"><div class="head"><span class="title" title="${esc(n.title)}">${esc(n.title)}</span>${tag}</div><div class="desc" title="${esc(n.desc)}">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${outer}${dep}__TASK_BADGE____DIAG_BADGE__${kids}</div></div>`;
+    html += `<div class="${cls.join(" ")}" tabindex="0" role="button" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px${anim ? `;--i:${Math.min(rank.get(id), 10)};--from:${anim.from}` : ""}" title="${esc(n.title)} (${esc(n.id)})"><div class="head"><span class="title" title="${esc(n.title)}">${esc(n.title)}</span>${tag}</div><div class="desc" title="${esc(n.desc)}">${esc(n.desc)}</div><div class="foot"><span class="kind">${KIND[n.kind]}</span>${codeTag}${outer}${dep}__TASK_BADGE____DIAG_BADGE__${kids}</div></div>`;
   }
   const edgesEl = $("edges"), pillsEl = $("pills"), areasEl = $("areas");
   edgesEl.classList.remove("leaving", "enter"); pillsEl.classList.remove("leaving", "enter"); areasEl.classList.remove("leaving", "enter");
@@ -790,7 +795,7 @@ function renderSide() {
   const items = D.impact.items.filter((it) => it.dependents.length), s = D.impact.summary;
   const grp = [s.wired.length ? `要一起改 ${s.wired.length} 个` : "", s.inspect.length ? `需检查 ${s.inspect.length} 个` : ""].filter(Boolean).join(" · ");
   const row = (id, extra, cls) => `<div class="orow irow ${cls} ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}" title="${esc(byId.get(id).title)}"><span class="dot ${byId.get(id).kind}"></span><span class="t" title="${esc(byId.get(id).title)}">${esc(byId.get(id).title)}</span>${extra}</div>`;
-  $("impactList").innerHTML = items.length ? `<div class="group">${grp} <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; const step = via.length > 2 ? ((inSub(via[2], via[1]) ? "容器 " : "经 ") + byId.get(via[1]).title) : (it.mark === "+" && wired.has(d) ? "要一起改" : "直接"); return row(d, `<span class="hint" title="${esc(via.map((x) => byId.get(x).title).join(" → "))}">${esc(step)}</span>`, "sub"); }).join("")).join("") : "";
+  $("impactList").innerHTML = items.length ? `<div class="group">${grp} <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; const step = via.length > 2 ? ((inSub(via[2], via[1]) ? "上级 " : "经 ") + byId.get(via[1]).title) : (it.mark === "+" && wired.has(d) ? "要一起改" : "直接"); return row(d, `<span class="hint" title="${esc(causeText(d))}">${esc(step)}</span>`, "sub"); }).join("")).join("") : "";
   $("flows").innerHTML = D.flows.length ? `<div class="group">业务流程</div>` + D.flows.map((f) => `<div class="frow ${state.flow === f.id ? "sel" : ""}" tabindex="0" data-flow="${esc(f.id)}" title="${esc(f.title)}"><span class="t" title="${esc(f.title)}">${esc(f.title)}</span><span class="n">${f.steps.length} 步</span></div>`).join("") : "";
 }
 
@@ -799,29 +804,40 @@ function causes(id) {
   return D.impact.items.filter((it) => it.paths && it.paths[id]).map((it) => ({it, path: it.paths[id]}));
 }
 const markWord = (it) => it.mark === "+" ? "新增" : "修改";
-const stepLabel = (path, i) => `${inSub(path[i + 1], path[i]) ? "容器" : "节点"}「${byId.get(path[i]).title}」`;
+const titleLink = (id) => `<a tabindex="0" data-go="${esc(id)}" title="${esc(id)}">「${nameWithId(id)}」</a>`;
+const edgeNote = (from, to) => {
+  const labs = D.edges.filter((e) => inSub(e.from, from) && inSub(e.to, to) && e.label).map((e) => e.label);
+  return labs.length ? `（连线说明：${esc(labs.join(" · "))}）` : "";
+};
 function causeText(id) {
-  return causes(id).map(({it, path}) => path.length > 2
-    ? `${markWord(it)}「${byId.get(it.id).title}」,经${path.slice(1, -1).map((_, i) => stepLabel(path, i + 1)).join(" → ")}关联,需检查`
-    : `${it.mark === "+" ? `直接调用新增的「${byId.get(it.id).title}」,也要一起改` : `直接依赖被修改的「${byId.get(it.id).title}」,需检查`}`).join(";");
+  const me = byId.get(id).title;
+  return causes(id).map(({it, path}) => {
+    const t = byId.get(it.id).title, mids = path.slice(1, -1);
+    if (path.length === 2) return it.mark === "+" ? `因为「${me}」直接调用了本次新增的「${t}」，也要一起改` : `因为「${me}」直接依赖了本次修改的「${t}」，需确认是否受影响`;
+    if (mids.length === 1 && inSub(path[2], path[1])) return `因为「${me}」连到了整个「${byId.get(path[1]).title}」区域，而该区域内的「${t}」本次有修改，需确认是否受影响`;
+    return `因为本次${markWord(it)}了「${t}」，经过「${mids.map((x) => byId.get(x).title).join(" → ")}」关联到「${me}」，需确认是否受影响`;
+  }).join("；");
 }
 function whyBox(id) {
   const cs = causes(id);
   if (!cs.length) return "";
-  const wired = new Set(D.impact.summary.wired);
+  const wired = new Set(D.impact.summary.wired), me = nameWithId(id);
   const lis = cs.map(({it, path}) => {
-    const chain = path.map((x, i) => i === 0 ? `<b>${esc(byId.get(x).title)}</b>` : `<a tabindex="0" data-go="${esc(x)}">${esc(byId.get(x).title)}</a>`).join(" → ");
     const mids = path.slice(1, -1);
-    const how = path.length === 2
-      ? (it.mark === "+" ? "直接调用新增节点,也要一起改" : "直接依赖被修改节点,需检查是否受影响")
-      : (mids.length === 1 && inSub(path[2], path[1]))
-        ? `指向所在容器「${esc(byId.get(path[1]).title)}」（容器级关联,非直接调用,需检查是否受影响）`
-        : `经${mids.map((_, i) => esc(stepLabel(path, i + 1))).join(" → ")}间接关联,需检查是否受影响`;
-    return `<li><span class="tag ${it.mark === "+" ? "new" : "chg"}">${markWord(it)}</span> ${link(it.id)}<div class="chain">${chain}<br>${how}</div></li>`;
+    if (path.length === 2 && it.mark === "+") {
+      return `<li><div><b>原因</b>：图上画了「${me}」直接调用本次新增的${titleLink(it.id)}${edgeNote(id, it.id)}，但「${me}」本身还没标为修改（<code>~</code>）。</div><div class="chain"><b>需要确认</b>：调用新节点通常需要改动「${me}」的代码（或在地图里把「${me}」标上 <code>~</code>）。</div></li>`;
+    }
+    if (path.length === 2) {
+      return `<li><div><b>原因</b>：「${me}」直接依赖了本次修改的${titleLink(it.id)}${edgeNote(id, it.id)}。</div><div class="chain"><b>需要确认</b>：确认${titleLink(it.id)}的改动是否影响「${me}」；如果对外接口和行为未变，则无需改动「${me}」。</div></li>`;
+    }
+    if (mids.length === 1 && inSub(path[2], path[1])) {
+      return `<li><div><b>原因</b>：${titleLink(path[1])}区域内的子节点${titleLink(it.id)}本次有修改。</div><div class="chain"><b>图上连线</b>：「${me}」连到了整个${titleLink(path[1])}区域${edgeNote(id, path[1])}，没有细化到该区域内部具体用到了哪个子节点。<br><b>需要确认</b>：确认这次修改${titleLink(it.id)}后是否需要同步改动「${me}」；如果不需要，则无需改动「${me}」。</div></li>`;
+    }
+    const stepLinks = path.map((x, i) => (i === 0 ? `<b>「${nameWithId(x)}」</b>` : titleLink(x)) + (i > 0 && inSub(x, path[i - 1]) ? "）" : "") + (i + 1 < path.length ? (inSub(path[i + 1], x) ? "（包含子项" : " → ") : "")).join("");
+    return `<li><div><b>原因</b>：本次${markWord(it)}了${titleLink(it.id)}，而「${me}」沿着 ${stepLinks} 间接关联到它。</div><div class="chain"><b>需要确认</b>：确认上游改动是否会沿着这条调用链传到「${me}」；如果已被中间节点隔离，则无需改动「${me}」。</div></li>`;
   }).join("");
-  return `<h3>${wired.has(id) ? "为什么也要一起改" : "为什么需要检查"}</h3><ul class="why">${lis}</ul>`;
+  return `<h3>${wired.has(id) ? "为什么标为「也要一起改」" : "为什么标为「需检查」"}</h3><ul class="why">${lis}</ul>`;
 }
-const flat = (t) => t.toLowerCase().replace(/[\s_.-]+/g, "");
 const link = (id) => {
   const n = byId.get(id);
   const away = par(id) === state.scope ? "" : ` <span class="lab" title="点击会切换到这个节点所在的层">↗ ${par(id) ? esc(byId.get(par(id)).title) : "顶层"}</span>`;
@@ -861,8 +877,8 @@ function pathTree(it) {
   if (!kids.size) return "";
   const draw = (id, depth) => [...(kids.get(id) || [])].sort().map((c) => {
     const n = byId.get(c), isBox = inSub(id, c);
-    const tag = isBox ? '<span class="lab">所在容器 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
-    const hint = isBox || n.mark ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
+    const tag = isBox ? '<span class="lab">通过上级区域 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
+    const hint = isBox ? ' <span class="lab">关联到：</span>' : n.mark ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
     return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${hint}</div>${draw(c, depth + 1)}</div>`;
   }).join("");
   return `<div class="ptree"><div class="row root">${esc(byId.get(it.id).title)} <span class="lab">${it.mark === "+" ? "新增" : "修改"}</span></div>${draw(it.id, 0)}</div>`;
