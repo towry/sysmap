@@ -979,7 +979,7 @@ function renderNow() {
   $("back").disabled = navIndex <= 0; $("fwd").disabled = navIndex >= navMax;
   if (keep && document.activeElement === document.body) {
     const el = document.querySelector(`.${keep.cls}[data-${keep.attr}="${CSS.escape(keep.val)}"]`);
-    if (el) el.focus();
+    if (el && el.offsetParent) el.focus();
   }
 }
 
@@ -1006,7 +1006,19 @@ function readHash() {
   setData(D);
 }
 
+function closeMenu() {
+  document.body.classList.remove("menu-open");
+  $("menu").setAttribute("aria-expanded", "false");
+  if (matchMedia("(max-width:1100px)").matches && !$("searchBox").hidden) {
+    $("searchBox").hidden = true;
+    $("searchStatus").hidden = true;
+    $("searchToggle").setAttribute("aria-expanded", "false");
+    $("searchToggle").setAttribute("aria-label", "搜索节点");
+    $("searchToggle").title = "搜索节点 (/)";
+  }
+}
 function reveal(id) {
+  closeMenu();
   leaveDiagram();
   if (special() && buildView().ids.includes(id)) { state.sel = id; return; } // already on the canvas: just select it
   state.impact = ""; state.hood = "";
@@ -1020,6 +1032,7 @@ function lca(ids) {
   return out;
 }
 function pickFlow(id) {
+  closeMenu();
   leaveDiagram();
   state.flow = state.flow === id ? "" : id; state.sel = ""; state.impact = ""; state.hood = "";
   const f = D.flows.find((x) => x.id === state.flow);
@@ -1053,7 +1066,7 @@ document.addEventListener("click", (ev) => {
   if (t.closest("#back")) { try { history.back(); } catch (e) {} return; }
   if (t.closest("#fwd")) { try { history.forward(); } catch (e) {} return; }
   const im = t.closest("[data-impact]");
-  if (im) { leaveDiagram(); state.impact = im.dataset.impact; state.hood = ""; state.flow = ""; state.sel = im.dataset.impact === "*" ? "" : im.dataset.impact; renderAll(); return; }
+  if (im) { closeMenu(); leaveDiagram(); state.impact = im.dataset.impact; state.hood = ""; state.flow = ""; state.sel = im.dataset.impact === "*" ? "" : im.dataset.impact; renderAll(); return; }
   const hd = t.closest("[data-hood]");
   if (hd) { leaveDiagram(); state.hood = hd.dataset.hood; state.impact = ""; state.flow = ""; state.sel = state.hood; renderAll(); return; }
   const hp = t.closest("[data-hops]");
