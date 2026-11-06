@@ -101,14 +101,16 @@ type jsonFlow struct {
 }
 
 type viewData struct {
-	Title   string     `json:"title"`
-	Desc    string     `json:"desc"`
-	Version string     `json:"version"`
-	Nodes   []jsonNode `json:"nodes"`
-	Edges   []jsonEdge `json:"edges"`
-	Flows   []jsonFlow `json:"flows"`
-	Impact  Impact     `json:"impact"`
-	Diags   []Diag     `json:"diags"`
+	Title          string        `json:"title"`
+	Desc           string        `json:"desc"`
+	Version        string        `json:"version"`
+	Nodes          []jsonNode    `json:"nodes"`
+	Edges          []jsonEdge    `json:"edges"`
+	Flows          []jsonFlow    `json:"flows"`
+	Impact         Impact        `json:"impact"`
+	Diags          []Diag        `json:"diags"`
+	ProgramVersion string        `json:"programVersion"`
+	FileVersions   []FileVersion `json:"fileVersions"`
 }
 
 // JSON is the model as the page and `sysmap json` consume it. The model must have
@@ -126,7 +128,10 @@ func (m *Model) JSONWithTasks(source string, tasks *TaskOverlay, diags []Diag) [
 	}
 	sum := sha256.Sum256([]byte(versionSource))
 	v := viewData{Title: m.Title, Desc: m.Desc, Version: hex.EncodeToString(sum[:6]),
-		Nodes: []jsonNode{}, Edges: []jsonEdge{}, Flows: []jsonFlow{}, Impact: m.Impact(), Diags: diags}
+		Nodes: []jsonNode{}, Edges: []jsonEdge{}, Flows: []jsonFlow{}, Impact: m.Impact(), Diags: diags, ProgramVersion: ProgramVersion, FileVersions: append([]FileVersion{}, m.FileVersions...)}
+	for i := range v.FileVersions {
+		v.FileVersions[i].Advice = v.FileVersions[i].guidance()
+	}
 	if v.Diags == nil {
 		v.Diags = []Diag{}
 	}

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version=1.24.13
+go_dir="$HOME/.local/share/sysmap/go$go_version"
+
+if [[ ! -x "$go_dir/bin/go" ]] || [[ "$("$go_dir/bin/go" version)" != "go version go$go_version "* ]]; then
+  case "$(uname -m)" in
+    x86_64) arch=amd64; sha256=1fc94b57134d51669c72173ad5d49fd62afb0f1db9bf3f798fd98ee423f8d730 ;;
+    aarch64) arch=arm64; sha256=74d97be1cc3a474129590c67ebf748a96e72d9f3a2b6fef3ed3275de591d49b3 ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  if [[ -e "$go_dir" ]]; then
+    echo "Existing Go installation at $go_dir is invalid; please remove it before retrying." >&2
+    exit 1
+  fi
+  echo "Installing Go $go_version ($arch)"
+  mkdir -p "$(dirname "$go_dir")"
+  temp_dir=$(mktemp -d "$(dirname "$go_dir")/.go-install.XXXXXX")
+  trap 'rm -rf -- "$temp_dir"' EXIT
+  curl -fsSL --retry 3 "https://go.dev/dl/go$go_version.linux-$arch.tar.gz" -o "$temp_dir/go.tar.gz"
+  echo "$sha256  $temp_dir/go.tar.gz" | sha256sum -c -
+  tar -xzf "$temp_dir/go.tar.gz" -C "$temp_dir"
+  mv "$temp_dir/go" "$go_dir"
+else
+  echo "Go $go_version is already installed"
+fi
+
+profile="$HOME/.bash_profile"
+marker='# sysmap orb Go toolchain'
+if ! grep -Fqx "$marker" "$profile" 2>/dev/null; then
+  cat >> "$profile" <<'EOF'
+
+# sysmap orb Go toolchain
+if [ -d "$HOME/.local/share/sysmap/go1.24.13/bin" ]; then
+  case ":$PATH:" in
+    *":$HOME/.local/share/sysmap/go1.24.13/bin:"*) ;;
+    *) export PATH="$HOME/.local/share/sysmap/go1.24.13/bin:$PATH" ;;
+  esac
+fi
+EOF
+fi
+echo "Go setup complete"

@@ -51,6 +51,7 @@ func (l *loader) read(path string) (*Model, error) {
 	}
 	l.loadDiagrams(m)
 	m.Files = []string{path}
+	m.FileVersions[0].File = path
 	return m, nil
 }
 
@@ -263,6 +264,12 @@ func (l *loader) mount(m *Model, n *Node, stack []string) bool {
 		}
 		if !known {
 			m.Files = append(m.Files, f)
+			for _, version := range child.FileVersions {
+				if version.File == f {
+					m.FileVersions = append(m.FileVersions, version)
+					break
+				}
+			}
 		}
 	}
 	if n.Desc == "" {

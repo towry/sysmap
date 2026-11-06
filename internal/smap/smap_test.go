@@ -1835,3 +1835,52 @@ func TestSpecDocumentsFlowsAndCaveats(t *testing.T) {
 		}
 	}
 }
+
+func TestFileVersionsInMountedMaps(t *testing.T) {
+	dir := t.TempDir()
+	child := writeMapFile(t, dir, "child.smap", "# sysmap-format: 1\n# sysmap-reviewed-with: v0.1.1\nbiz child\n")
+	root := writeMapFile(t, dir, "root.smap", "biz parent\n  mount child.smap\n")
+	m := loadClean(t, root)
+	if len(m.FileVersions) != 2 || m.FileVersions[0].File != root || m.FileVersions[0].Format != "" || m.FileVersions[1].File != child || m.FileVersions[1].Reviewed != "v0.1.1" {
+		t.Fatalf("file versions: %+v", m.FileVersions)
+	}
+	old := ProgramVersion
+	t.Cleanup(func() { ProgramVersion = old })
+	ProgramVersion = "v0.1.2"
+	if !strings.Contains(m.VersionText(), "v0.1.1 to v0.1.2") {
+		t.Fatal(m.VersionText())
+	}
+	ProgramVersion = "dev"
+	if !strings.Contains(m.VersionText(), "not a stable release") {
+		t.Fatal(m.VersionText())
+	}
+	ProgramVersion = "v0.1.2"
+	m.FileVersions[1].Reviewed = "v0.10.0"
+	if !strings.Contains(m.VersionText(), "newer Sysmap release") {
+		t.Fatal(m.VersionText())
+	}
+	m.FileVersions[1].Reviewed = "v0.1.1"
+	m.FileVersions[1].File = "dir/map's file.smap"
+	if !strings.Contains(m.VersionText(), "sysmap check --refs 'dir/map'\\''s file.smap'") {
+		t.Fatal(m.VersionText())
+	}
+	m.FileVersions[1].Format = ""
+	if got := m.VersionText(); !strings.Contains(got, "format is undeclared") || !strings.Contains(got, "v0.1.1 to v0.1.2") {
+		t.Fatal(got)
+	}
+}
+
+func TestInvalidFileVersionDeclarations(t *testing.T) {
+	for _, source := range []string{
+		"# sysmap-format: 2\nbiz a\n",
+		"# sysmap-format: 1\n# sysmap-format: 1\nbiz a\n",
+		"biz a\n# sysmap-format: 1\n",
+		"# sysmap-reviewed-with: v1.2.3-rc1\nbiz a\n",
+		"#sysmap-format: 2\nbiz a\n",
+	} {
+		_, diags := Parse(source)
+		if !HasErrors(diags) {
+			t.Errorf("expected error for %q", source)
+		}
+	}
+}
