@@ -60,13 +60,14 @@ type Summary struct {
 	ChangedBiz  []string `json:"changedBiz"`
 	ChangedExt  []string `json:"changedExt"`
 	NewOther    []string `json:"newOther"`
-	Wired       []string `json:"wired"`  // existing nodes that depend on a new (+) node, so they must change too
-	Reused      int      `json:"reused"` // distinct shared nodes the new nodes depend on
+	Reused      []string `json:"reused"`  // distinct unmarked shared (core) nodes that planned nodes depend on
+	Wired       []string `json:"wired"`   // unmarked existing nodes with a direct edge to a new (+) node, so they must change too
+	Inspect     []string `json:"inspect"` // other existing nodes reached by the planned change (Affected minus Wired)
 }
 
 func (m *Model) Impact() Impact {
 	imp := Impact{Level: "none", Verdict: "No planned nodes. Mark a node with `+` (new) or `~` (changed) to see its impact.", Items: []PlanItem{}, Affected: []string{},
-		Summary: Summary{ChangedCore: []string{}, NewCore: []string{}, ChangedBiz: []string{}, ChangedExt: []string{}, NewOther: []string{}, Wired: []string{}}}
+		Summary: Summary{ChangedCore: []string{}, NewCore: []string{}, ChangedBiz: []string{}, ChangedExt: []string{}, NewOther: []string{}, Reused: []string{}, Wired: []string{}, Inspect: []string{}}}
 	affected := map[string]bool{}
 	wired := map[string]bool{}
 	rank := map[string]int{"none": 0, "extension": 1, "contained": 2, "wide": 3}
@@ -107,7 +108,9 @@ func (m *Model) Impact() Impact {
 		for _, d := range item.Dependents {
 			affected[d] = true
 			if n.Mark == "+" {
-				wired[d] = true // an existing node that points at a new one has to be edited
+				if len(item.Paths[d]) == 2 {
+					wired[d] = true // an existing node that directly points at a new one has to be edited
+				}
 				raise("contained")
 			}
 		}
@@ -139,7 +142,14 @@ func (m *Model) Impact() Impact {
 	}
 	imp.Affected = sortedKeys(affected)
 	imp.Summary.Wired = sortedKeys(wired)
-	summarize(&imp)
+	inspect := map[string]bool{}
+	for d := range affected {
+		if !wired[d] {
+			inspect[d] = true
+		}
+	}
+	imp.Summary.Inspect = sortedKeys(inspect)
+	m.summarize(&imp)
 	imp.Verdict = verdict(imp)
 	return imp
 }
@@ -154,11 +164,13 @@ func (m *Model) touches(set map[string]bool, id string) bool {
 }
 
 // summarize fills imp.Summary from the plan items.
-func summarize(imp *Impact) {
+func (m *Model) summarize(imp *Impact) {
 	reused := map[string]bool{}
 	for _, it := range imp.Items {
 		for _, c := range it.ReusesCore {
-			reused[c] = true
+			if m.Nodes[c] != nil && m.Nodes[c].Mark == "" {
+				reused[c] = true
+			}
 		}
 		switch {
 		case it.Mark == "~" && it.Kind == Core:
@@ -173,33 +185,44 @@ func summarize(imp *Impact) {
 			imp.Summary.NewOther = append(imp.Summary.NewOther, it.ID)
 		}
 	}
-	imp.Summary.Reused = len(reused)
+	imp.Summary.Reused = sortedKeys(reused)
 }
 
 func verdict(imp Impact) string {
 	s := imp.Summary
 	var parts []string
 	if len(s.ChangedCore) > 0 {
-		parts = append(parts, fmt.Sprintf("changes shared node(s) %s, reaching %d existing node(s)", strings.Join(s.ChangedCore, ", "), len(imp.Affected)))
+		parts = append(parts, fmt.Sprintf("changes shared node(s) %s", strings.Join(s.ChangedCore, ", ")))
 	}
 	if len(s.NewCore) > 0 {
 		parts = append(parts, fmt.Sprintf("adds shared node(s) %s, a new common point", strings.Join(s.NewCore, ", ")))
 	}
 	if len(s.ChangedBiz) > 0 {
-		parts = append(parts, fmt.Sprintf("changes business node(s) %s, reaching %d existing node(s)", strings.Join(s.ChangedBiz, ", "), len(imp.Affected)))
+		parts = append(parts, fmt.Sprintf("changes business node(s) %s", strings.Join(s.ChangedBiz, ", ")))
 	}
 	if len(s.ChangedExt) > 0 {
-		parts = append(parts, fmt.Sprintf("changes external system(s) %s, reaching %d existing node(s)", strings.Join(s.ChangedExt, ", "), len(imp.Affected)))
+		parts = append(parts, fmt.Sprintf("changes external system(s) %s", strings.Join(s.ChangedExt, ", ")))
 	}
+	noExistingEdited := len(parts) == 0 && len(s.Wired) == 0 && len(s.Inspect) == 0
 	if len(s.NewOther) > 0 {
 		tail := ""
-		if len(parts) == 0 && len(s.Wired) == 0 {
+		if noExistingEdited && len(s.Reused) == 0 {
 			tail = " and changes no existing node"
 		}
-		parts = append(parts, fmt.Sprintf("adds %d new node(s) reusing %d shared node(s)%s", len(s.NewOther), s.Reused, tail))
+		parts = append(parts, fmt.Sprintf("adds node(s) %s%s", strings.Join(s.NewOther, ", "), tail))
+	}
+	if len(s.Reused) > 0 {
+		tail := ""
+		if noExistingEdited {
+			tail = ", and changes no existing node"
+		}
+		parts = append(parts, fmt.Sprintf("reuses shared node(s) %s (unchanged)%s", strings.Join(s.Reused, ", "), tail))
 	}
 	if len(s.Wired) > 0 {
 		parts = append(parts, fmt.Sprintf("existing node(s) %s depend on the new node(s) and must change too", strings.Join(s.Wired, ", ")))
+	}
+	if len(s.Inspect) > 0 {
+		parts = append(parts, fmt.Sprintf("inspect existing dependent(s) %s", strings.Join(s.Inspect, ", ")))
 	}
 	if len(parts) == 0 {
 		return imp.Verdict
@@ -212,6 +235,14 @@ func verdict(imp Impact) string {
 func (imp Impact) Text() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, imp.Verdict)
+	wired := map[string]bool{}
+	for _, d := range imp.Summary.Wired {
+		wired[d] = true
+	}
+	reused := map[string]bool{}
+	for _, c := range imp.Summary.Reused {
+		reused[c] = true
+	}
 	for _, it := range imp.Items {
 		fmt.Fprintf(&b, "\n%s %s %q\n", it.Mark, it.ID, it.Title)
 		list := func(label string, ids []string) {
@@ -219,18 +250,43 @@ func (imp Impact) Text() string {
 				fmt.Fprintf(&b, "  %s: %s\n", label, strings.Join(ids, ", "))
 			}
 		}
-		list("reuses shared", it.ReusesCore)
+		var unchangedCore, plannedCore []string
+		for _, c := range it.ReusesCore {
+			if reused[c] {
+				unchangedCore = append(unchangedCore, c)
+			} else {
+				plannedCore = append(plannedCore, c)
+			}
+		}
+		list("reuses shared (unchanged)", unchangedCore)
+		list("depends on changed/new shared", plannedCore)
 		list("depends on business", it.DependsBiz)
 		list("depends on external", it.DependsExt)
 		sort.Strings(it.Flows)
 		list("flows touched", it.Flows)
 		if len(it.Dependents) > 0 {
-			fmt.Fprintf(&b, "  existing dependents (%d):\n", len(it.Dependents))
+			var mustChange, toInspect []string
 			for _, d := range it.Dependents {
-				if p := it.Paths[d]; len(p) > 2 {
-					fmt.Fprintf(&b, "    %s (via %s)\n", d, strings.Join(p[1:len(p)-1], " > "))
+				if it.Mark == "+" && wired[d] && len(it.Paths[d]) == 2 {
+					mustChange = append(mustChange, d)
 				} else {
+					toInspect = append(toInspect, d)
+				}
+			}
+			if len(mustChange) > 0 {
+				fmt.Fprintf(&b, "  wired dependents (must change too, %d):\n", len(mustChange))
+				for _, d := range mustChange {
 					fmt.Fprintf(&b, "    %s\n", d)
+				}
+			}
+			if len(toInspect) > 0 {
+				fmt.Fprintf(&b, "  existing dependents to inspect (%d):\n", len(toInspect))
+				for _, d := range toInspect {
+					if p := it.Paths[d]; len(p) > 2 {
+						fmt.Fprintf(&b, "    %s (via %s)\n", d, strings.Join(p[1:len(p)-1], " > "))
+					} else {
+						fmt.Fprintf(&b, "    %s\n", d)
+					}
 				}
 			}
 		}

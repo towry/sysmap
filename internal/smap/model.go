@@ -177,27 +177,54 @@ func (m *Model) Dependents(id string) []string {
 
 // DependentPaths maps each transitive dependent of id to the shortest chain that reaches id:
 // [checkout payment ledger] means checkout depends on payment, which depends on ledger.
+// When an edge reaches a node through one of its ancestor containers (for example web -> orders
+// reaching ~ checkout inside orders), that container sits in the chain between the caller and
+// the child ([web orders checkout]). A new (+) node only takes edges into its own subtree and
+// stops at callers already marked + or ~, which track their own dependents.
 func (m *Model) DependentPaths(id string) map[string][]string {
-	next := map[string]string{} // dependent -> the node it was reached through
+	type hop struct {
+		to, via string
+	}
+	isNew := m.Nodes[id] != nil && m.Nodes[id].Mark == "+"
+	next := map[string]hop{} // dependent -> the node (and optional container) it was reached through
 	queue := []string{id}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
 		for _, e := range m.Edges {
-			if _, seen := next[e.From]; (m.InSubtree(e.To, cur) || m.InSubtree(cur, e.To)) && !m.InSubtree(e.From, cur) && !m.InSubtree(e.From, id) && !seen {
-				next[e.From] = cur
-				queue = append(queue, e.From)
+			if m.InSubtree(e.From, cur) || m.InSubtree(e.From, id) || m.InSubtree(e.From, e.To) {
+				continue
+			}
+			via := ""
+			switch {
+			case m.InSubtree(e.To, cur):
+			case !(isNew && cur == id) && m.InSubtree(cur, e.To):
+				via = e.To
+			default:
+				continue
+			}
+			if isNew && m.Nodes[e.From] != nil && m.Nodes[e.From].Mark != "" {
+				continue
+			}
+			prev, seen := next[e.From]
+			if !seen || (prev.to == cur && prev.via != "" && (via == "" || m.InSubtree(via, prev.via))) {
+				next[e.From] = hop{to: cur, via: via}
+				if !seen {
+					queue = append(queue, e.From)
+				}
 			}
 		}
 	}
 	paths := make(map[string][]string, len(next))
 	for d := range next {
 		chain := []string{d}
-		for at := next[d]; ; at = next[at] {
-			chain = append(chain, at)
-			if at == id {
-				break
+		for at := d; at != id; {
+			h := next[at]
+			if h.via != "" {
+				chain = append(chain, h.via)
 			}
+			chain = append(chain, h.to)
+			at = h.to
 		}
 		paths[d] = chain
 	}

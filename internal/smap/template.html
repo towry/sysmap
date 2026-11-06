@@ -359,8 +359,9 @@ function impactView() {
     if (state.impact !== "*" && it.id !== state.impact) continue;
     ids.add(it.id);
     for (const chain of Object.values(it.paths || {})) {
-      for (let i = 0; i + 1 < chain.length; i++) {
-        const a = chain[i], b = chain[i + 1], k = a + "\u0000" + b;
+      const pts = chain.filter((x, i) => i + 1 === chain.length || !inSub(chain[i + 1], x));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1], k = a + "\u0000" + b;
         ids.add(a); ids.add(b);
         if (agg.has(k)) continue;
         const real = D.edges.filter((e) => inSub(e.from, a) && (inSub(e.to, b) || inSub(b, e.to)));
@@ -565,7 +566,7 @@ function renderMap() {
   const flowHot = flowEdges();
   const hotNodes = new Set();
   for (const k of flowHot.keys()) k.split("\u0000").forEach((x) => hotNodes.add(x));
-  const affected = new Set(D.impact.affected);
+  const affected = new Set(D.impact.affected), wired = new Set(D.impact.summary.wired);
   const cvs = $("canvas");
   lastSize = {width: Math.max(width, 400), height: Math.max(height, 200)};
   cvs.style.width = lastSize.width + "px"; cvs.style.height = lastSize.height + "px";
@@ -629,7 +630,7 @@ function renderMap() {
     if (state.hood === id) cls.push("centre");
     if ((state.flow && !hotNodes.has(id)) || (!state.flow && !special() && sel && id !== sel && !v.edges.some((e) => (e.a === sel && e.b === id) || (e.b === sel && e.a === id)))) cls.push("dim");
     const centre = state.hood === id ? '<span class="tag centre">中心</span>' : "";
-    const tag = centre + (n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新增" : "修改"}</span>` : (affected.has(id) ? `<span class="tag hit" title="${esc(causeText(id))}">受影响</span>` : ""));
+    const tag = centre + (n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新增" : "修改"}</span>` : (affected.has(id) ? `<span class="tag hit" title="${esc(causeText(id))}">${wired.has(id) ? "要一起改" : "需检查"}</span>` : ""));
     const dep = n.kind === "core" && n.fanin ? `<span class="dep">被 ${n.fanin} 个依赖</span>` : "";
     const outer = v.ghost.has(id) ? "<span>· 层外</span>" : special() && !boxes.length && par(id) ? `<span>· ${esc(byId.get(par(id)).title)}</span>` : "";
     const kids = n.children.length ? `<span class="kids" title="包含 ${n.children.length} 个子节点,点这里或双击进入" data-kids>${ic("in")} ${n.children.length}</span>` : "";
@@ -684,7 +685,12 @@ function renderPageHead() {
     $("lead").textContent = "线从依赖方指向被依赖方,框是所在区域";
     $("lead").title = $("lead").textContent;
     $("lead").hidden = isNarrow();
-    $("stats").textContent = `${D.impact.affected.length} 个已有节点受影响`;
+    const s = D.impact.summary, wired = new Set(s.wired);
+    const oneIt = one ? D.impact.items.find((i) => i.id === one.id) : null;
+    const wCount = oneIt ? (oneIt.mark === "+" ? oneIt.dependents.filter((d) => wired.has(d) && oneIt.paths[d] && oneIt.paths[d].length === 2).length : 0) : s.wired.length;
+    const iCount = oneIt ? oneIt.dependents.length - wCount : s.inspect.length;
+    const st = [wCount ? `${wCount} 个要一起改` : "", iCount ? `${iCount} 个关联节点需检查` : ""].filter(Boolean);
+    $("stats").textContent = st.join(" · ") || "不改动任何已有节点";
     return;
   }
   const scope = state.scope ? byId.get(state.scope) : null;
@@ -753,7 +759,7 @@ function setupPanzoom() {
 function renderSide() {
   const q = query.trim().toLowerCase();
   const match = (n) => !q || (n.id + " " + n.title + " " + n.desc).toLowerCase().includes(q);
-  const keep = new Map();
+  const keep = new Map(), wired = new Set(D.impact.summary.wired);
   const visit = (id) => { const n = byId.get(id); let any = match(n); for (const c of n.children) any = visit(c) || any; keep.set(id, any); return any; };
   roots().forEach(visit);
   const walk = (id) => {
@@ -762,16 +768,17 @@ function renderSide() {
     const isOpen = q ? true : open.has(id);
     const caret = n.children.length ? `<span class="caret ${isOpen ? "open" : ""}" data-caret="${esc(id)}">${ic("chev")}</span>` : '<span class="caret"></span>';
     const mk = n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span>` : "";
-    const hit = !n.mark && causes(id).length ? `<span class="tag hit" title="${esc(causeText(id))}">波及</span>` : "";
+    const hit = !n.mark && causes(id).length ? `<span class="tag hit" title="${esc(causeText(id))}">${wired.has(id) ? "要一起改" : "需检查"}</span>` : "";
     const fan = n.kind === "core" && n.fanin ? `<span class="n" title="${n.fanin} 个节点依赖它">${n.fanin}</span>` : "";
     let html = `<div class="orow ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}" title="${esc(n.title)}">${caret}<span class="dot ${n.kind}"></span><span class="t" title="${esc(n.title)}">${esc(n.title)}</span>${mk}__TASK_BADGE____DIAG_BADGE__${hit}${fan}</div>`;
     if (isOpen && n.children.length) html += `<div class="kids-rule">${n.children.map(walk).join("")}</div>`;
     return html;
   };
   $("outline").innerHTML = roots().map(walk).join("") || '<div class="empty">没有匹配的节点</div>';
-  const items = D.impact.items.filter((it) => it.dependents.length);
+  const items = D.impact.items.filter((it) => it.dependents.length), s = D.impact.summary;
+  const grp = [s.wired.length ? `要一起改 ${s.wired.length} 个` : "", s.inspect.length ? `需检查 ${s.inspect.length} 个` : ""].filter(Boolean).join(" · ");
   const row = (id, extra, cls) => `<div class="orow irow ${cls} ${state.sel === id ? "sel" : ""}" tabindex="0" data-id="${esc(id)}" title="${esc(byId.get(id).title)}"><span class="dot ${byId.get(id).kind}"></span><span class="t" title="${esc(byId.get(id).title)}">${esc(byId.get(id).title)}</span>${extra}</div>`;
-  $("impactList").innerHTML = items.length ? `<div class="group">本次改动波及 ${D.impact.affected.length} 个已有节点 <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; return row(d, `<span class="hint" title="${esc(via.map((x) => byId.get(x).title).join(" → "))}">${via.length > 2 ? "经 " + esc(byId.get(via[1]).title) : "直接"}</span>`, "sub"); }).join("")).join("") : "";
+  $("impactList").innerHTML = items.length ? `<div class="group">${grp} <a tabindex="0" data-impact="*">在画布上看</a></div>` + items.map((it) => row(it.id, `<span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新" : "改"}</span>`, "") + it.dependents.map((d) => { const via = it.paths[d]; const step = via.length > 2 ? ((inSub(via[2], via[1]) ? "容器 " : "经 ") + byId.get(via[1]).title) : (it.mark === "+" && wired.has(d) ? "要一起改" : "直接"); return row(d, `<span class="hint" title="${esc(via.map((x) => byId.get(x).title).join(" → "))}">${esc(step)}</span>`, "sub"); }).join("")).join("") : "";
   $("flows").innerHTML = D.flows.length ? `<div class="group">业务流程</div>` + D.flows.map((f) => `<div class="frow ${state.flow === f.id ? "sel" : ""}" tabindex="0" data-flow="${esc(f.id)}" title="${esc(f.title)}"><span class="t" title="${esc(f.title)}">${esc(f.title)}</span><span class="n">${f.steps.length} 步</span></div>`).join("") : "";
 }
 
@@ -780,20 +787,27 @@ function causes(id) {
   return D.impact.items.filter((it) => it.paths && it.paths[id]).map((it) => ({it, path: it.paths[id]}));
 }
 const markWord = (it) => it.mark === "+" ? "新增" : "修改";
+const stepLabel = (path, i) => `${inSub(path[i + 1], path[i]) ? "容器" : "节点"}「${byId.get(path[i]).title}」`;
 function causeText(id) {
   return causes(id).map(({it, path}) => path.length > 2
-    ? `${markWord(it)}「${byId.get(it.id).title}」,经过「${path.slice(1, -1).map((x) => byId.get(x).title).join("」「")}」波及到它`
-    : `${it.mark === "+" ? "依赖新增的" : "直接依赖被修改的"}「${byId.get(it.id).title}」`).join(";");
+    ? `${markWord(it)}「${byId.get(it.id).title}」,经${path.slice(1, -1).map((_, i) => stepLabel(path, i + 1)).join(" → ")}关联,需检查`
+    : `${it.mark === "+" ? `直接调用新增的「${byId.get(it.id).title}」,也要一起改` : `直接依赖被修改的「${byId.get(it.id).title}」,需检查`}`).join(";");
 }
 function whyBox(id) {
   const cs = causes(id);
   if (!cs.length) return "";
+  const wired = new Set(D.impact.summary.wired);
   const lis = cs.map(({it, path}) => {
     const chain = path.map((x, i) => i === 0 ? `<b>${esc(byId.get(x).title)}</b>` : `<a tabindex="0" data-go="${esc(x)}">${esc(byId.get(x).title)}</a>`).join(" → ");
-    const how = path.length > 2 ? `间接,隔了 ${path.length - 2} 个节点` : it.mark === "+" ? "直接依赖新节点,要一起改" : "直接依赖";
+    const mids = path.slice(1, -1);
+    const how = path.length === 2
+      ? (it.mark === "+" ? "直接调用新增节点,也要一起改" : "直接依赖被修改节点,需检查是否受影响")
+      : (mids.length === 1 && inSub(path[2], path[1]))
+        ? `指向所在容器「${esc(byId.get(path[1]).title)}」（容器级关联,非直接调用,需检查是否受影响）`
+        : `经${mids.map((_, i) => esc(stepLabel(path, i + 1))).join(" → ")}间接关联,需检查是否受影响`;
     return `<li><span class="tag ${it.mark === "+" ? "new" : "chg"}">${markWord(it)}</span> ${link(it.id)}<div class="chain">${chain}<br>${how}</div></li>`;
   }).join("");
-  return `<h3>为什么受影响</h3><ul class="why">${lis}</ul>`;
+  return `<h3>${wired.has(id) ? "为什么也要一起改" : "为什么需要检查"}</h3><ul class="why">${lis}</ul>`;
 }
 const flat = (t) => t.toLowerCase().replace(/[\s_.-]+/g, "");
 const link = (id) => {
@@ -805,13 +819,16 @@ const link = (id) => {
 const LEVEL = {extension: "只是扩展", contained: "影响局部", wide: "影响通用边界"};
 function verdictText(im) {
   const s = im.summary, parts = [];
-  if (s.changedCore.length) parts.push(`改动了通用节点 ${names(s.changedCore)},会波及 ${im.affected.length} 个已有节点`);
-  if (s.newCore.length) parts.push(`新增通用节点 ${names(s.newCore)},它会成为新的共用点`);
-  if (s.changedBiz.length) parts.push(`改动了业务节点 ${names(s.changedBiz)},会波及 ${im.affected.length} 个已有节点`);
-  if (s.changedExt.length) parts.push(`改动了外部系统 ${names(s.changedExt)},会波及 ${im.affected.length} 个已有节点`);
-  if (s.newOther.length) parts.push(`新增 ${s.newOther.length} 个节点,复用 ${s.reused} 个通用节点${parts.length || s.wired.length ? "" : ",不改动任何已有节点"}`);
-  if (s.wired.length) parts.push(`已有节点 ${names(s.wired)} 依赖新节点,也要一起改`);
-  return parts.join(";");
+  if (s.changedCore.length) parts.push(`修改通用节点：${names(s.changedCore)}`);
+  if (s.newCore.length) parts.push(`新增通用节点：${names(s.newCore)}（新的共用边界）`);
+  if (s.changedBiz.length) parts.push(`修改业务节点：${names(s.changedBiz)}`);
+  if (s.changedExt.length) parts.push(`修改外部系统：${names(s.changedExt)}`);
+  const noEdit = !parts.length && !s.wired.length && !s.inspect.length;
+  if (s.newOther.length) parts.push(`新增节点：${names(s.newOther)}${noEdit && !s.reused.length ? "（不改动任何已有节点）" : ""}`);
+  if (s.reused.length) parts.push(`复用通用节点：${names(s.reused)}（只复用，不改动）${noEdit ? "，不改动任何已有节点" : ""}`);
+  if (s.wired.length) parts.push(`也要一起改：${names(s.wired)}（直接调用了新增节点）`);
+  if (s.inspect.length) parts.push(`需检查关联节点：${names(s.inspect)}（看是否受本次修改影响）`);
+  return parts.join("；");
 }
 
 function noteText(n) {
@@ -830,11 +847,11 @@ function pathTree(it) {
     }
   }
   if (!kids.size) return "";
-  const hit = new Set(it.dependents);
   const draw = (id, depth) => [...(kids.get(id) || [])].sort().map((c) => {
-    const n = byId.get(c);
-    const tag = hit.has(c) ? "" : `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> `;
-    return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${depth === 0 ? ' <span class="lab">直接依赖</span>' : ""}</div>${draw(c, depth + 1)}</div>`;
+    const n = byId.get(c), isBox = inSub(id, c);
+    const tag = isBox ? '<span class="lab">所在容器 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
+    const hint = isBox ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
+    return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${hint}</div>${draw(c, depth + 1)}</div>`;
   }).join("");
   return `<div class="ptree"><div class="row root">${esc(byId.get(it.id).title)} <span class="lab">${it.mark === "+" ? "新增" : "修改"}</span></div>${draw(it.id, 0)}</div>`;
 }
@@ -842,12 +859,21 @@ function pathTree(it) {
 function impactBox(only) {
   const im = D.impact;
   if (!im.items.length) return "";
+  const wired = new Set(im.summary.wired);
   const rows = (only ? [only] : im.items).map((it) => {
     const parts = [];
-    if (it.reusesCore.length) parts.push(`复用通用节点:${it.reusesCore.map(link).join("、")}`);
+    const unchangedCore = it.reusesCore.filter((c) => !byId.get(c).mark);
+    const plannedCore = it.reusesCore.filter((c) => byId.get(c).mark);
+    if (unchangedCore.length) parts.push(`复用通用节点（不改动）:${unchangedCore.map(link).join("、")}`);
+    if (plannedCore.length) parts.push(`依赖本次改动的通用节点:${plannedCore.map(link).join("、")}`);
     if (it.dependsBiz.length) parts.push(`依赖业务节点:${it.dependsBiz.map(link).join("、")}`);
     if (it.dependsExt.length) parts.push(`依赖外部系统:${it.dependsExt.map(link).join("、")}`);
-    if (it.dependents.length) parts.push(`${it.mark === "+" ? "要一起改的已有节点" : "会波及的已有节点"} ${it.dependents.length} 个,依赖路径:${pathTree(it)}<button class="btn" data-impact="${esc(it.id)}">在画布上看影响路径</button>`);
+    if (it.dependents.length) {
+      const wCount = it.mark === "+" ? it.dependents.filter((d) => wired.has(d) && it.paths[d] && it.paths[d].length === 2).length : 0;
+      const iCount = it.dependents.length - wCount;
+      const desc = [wCount ? `直接调用新节点、要一起改的已有节点 ${wCount} 个` : "", iCount ? `需检查的关联节点 ${iCount} 个` : ""].filter(Boolean).join("，");
+      parts.push(`${desc},依赖路径:${pathTree(it)}<button class="btn" data-impact="${esc(it.id)}">在画布上看影响路径</button>`);
+    }
     if (it.flows.length) parts.push(`涉及流程:${it.flows.map((f) => esc((D.flows.find((x) => x.id === f) || {title: f}).title)).join("、")}`);
     parts.push(...it.notes.map(noteText));
     return `<li><span class="tag ${it.mark === "+" ? "new" : "chg"}">${it.mark === "+" ? "新增" : "修改"}</span> ${link(it.id)}<div class="lab">${parts.join("<br>")}</div></li>`;

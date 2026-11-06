@@ -408,18 +408,58 @@ func TestVersionHashCoversDiagramFiles(t *testing.T) {
 func TestImpactExistingNodeWiredToNewNodeIsNotAnExtension(t *testing.T) {
 	m := mustParse(t, "core auth\nbiz orders\n  biz checkout\nbiz web\nweb -> checkout\ncheckout -> auth\n+ biz promo\npromo -> auth\ncheckout -> promo\n")
 	imp := m.Impact()
-	if imp.Level != "contained" || strings.Join(imp.Summary.Wired, ",") != "checkout,web" || strings.Join(imp.Affected, ",") != "checkout,web" {
+	if imp.Level != "contained" || strings.Join(imp.Summary.Wired, ",") != "checkout" || strings.Join(imp.Summary.Inspect, ",") != "web" || strings.Join(imp.Summary.Reused, ",") != "auth" || strings.Join(imp.Affected, ",") != "checkout,web" {
 		t.Fatalf("existing nodes that point at a new node must change too: %+v", imp)
 	}
-	if strings.Contains(imp.Verdict, "changes no existing node") || !strings.Contains(imp.Verdict, "must change too") {
+	if strings.Contains(imp.Verdict, "changes no existing node") || !strings.Contains(imp.Verdict, "existing node(s) checkout depend on the new node(s) and must change too") || !strings.Contains(imp.Verdict, "inspect existing dependent(s) web") {
 		t.Fatalf("verdict = %s", imp.Verdict)
+	}
+	if txt := imp.Text(); !strings.Contains(txt, "wired dependents (must change too, 1):\n    checkout\n") || !strings.Contains(txt, "existing dependents to inspect (1):\n    web (via checkout)\n") {
+		t.Fatalf("text =\n%s", txt)
 	}
 }
 
 func TestImpactEdgeToContainerReachesItsChangedChild(t *testing.T) {
 	m := mustParse(t, "biz web\nbiz orders\n  ~ biz checkout\nweb -> orders\n")
-	if got := strings.Join(m.Impact().Affected, ","); got != "web" {
+	imp := m.Impact()
+	if got := strings.Join(imp.Affected, ","); got != "web" {
 		t.Fatalf("an edge to the container uses its children; affected = %q", got)
+	}
+	if len(imp.Summary.Wired) != 0 || strings.Join(imp.Summary.Inspect, ",") != "web" {
+		t.Fatalf("container edge to ~ child must be inspect, not wired: %+v", imp.Summary)
+	}
+	if got := strings.Join(imp.Items[0].Paths["web"], ">"); got != "web>orders>checkout" {
+		t.Fatalf("container must appear in the path: %q", got)
+	}
+	if txt := imp.Text(); !strings.Contains(txt, "web (via orders)") {
+		t.Fatalf("text lacks container hop:\n%s", txt)
+	}
+
+	// A new (+) child inside a container is not wired to callers of the container.
+	ext := mustParse(t, "core auth\nbiz web\nbiz orders\n  + biz promo\npromo -> auth\nweb -> orders\n").Impact()
+	if ext.Level != "extension" || len(ext.Affected) != 0 || len(ext.Summary.Wired) != 0 {
+		t.Fatalf("new child inside a container must stay an extension: %+v", ext)
+	}
+
+	// When ~ report calls + gate inside a container that shipper points to, shipper is inspected
+	// once via the container on ~ report and never marked wired to + gate.
+	plan := mustParse(t, "core control\nbiz shipper\nbiz billing\n  ~ biz report\n  + biz gate\nreport -> control\nreport -> gate\nshipper -> billing\n").Impact()
+	if plan.Level != "contained" || len(plan.Summary.Wired) != 0 || strings.Join(plan.Summary.Inspect, ",") != "shipper" || strings.Join(plan.Summary.Reused, ",") != "control" {
+		t.Fatalf("combined container + planned caller summary = %+v", plan.Summary)
+	}
+	if strings.Contains(plan.Verdict, "must change too") || !strings.Contains(plan.Verdict, "reuses shared node(s) control (unchanged)") || !strings.Contains(plan.Verdict, "inspect existing dependent(s) shipper") {
+		t.Fatalf("verdict = %s", plan.Verdict)
+	}
+	if len(plan.Items[1].Dependents) != 0 {
+		t.Fatalf("+ gate must not duplicate dependents through ~ report: %+v", plan.Items[1])
+	}
+
+	// Direct edge wins over container edge regardless of declaration order.
+	for _, edges := range []string{"web -> orders\nweb -> checkout\n", "web -> checkout\nweb -> orders\n"} {
+		both := mustParse(t, "biz web\nbiz orders\n  ~ biz checkout\n"+edges).Impact()
+		if got := strings.Join(both.Items[0].Paths["web"], ">"); got != "web>checkout" {
+			t.Fatalf("edges %q gave path %q, want direct web>checkout", edges, got)
+		}
 	}
 }
 
