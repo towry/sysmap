@@ -60,11 +60,15 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 :root[data-theme=dark] .switch .knob{transform:translateX(22px)}
 .brand b{font-size:15px;font-weight:700;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 #searchToggle{flex:none}
-.search{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);border-radius:5px;padding:0 8px;min-height:30px;color:var(--tx2);font-size:13px;background:var(--bg);transition:border-color .12s}
-.search:hover,.search:focus-within{border-color:var(--ui3)}
+#searchToggle[aria-expanded=true]{background:var(--bg2);border-color:var(--ui3);color:var(--accent)}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);border-radius:5px;padding:0 0 0 8px;min-height:40px;color:var(--tx2);font-size:13px;background:var(--bg);transition:border-color .12s}
+.search:hover{border-color:var(--ui3)}
+.search:focus-within{border-color:var(--focus);box-shadow:0 0 0 1px var(--focus)}
 .search input{flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--tx)}
 .search input::placeholder{color:var(--tx2)}
-.search kbd{font:11px var(--mono);color:var(--tx2);border:1px solid var(--ui2);border-radius:4px;padding:0 5px}
+.search-clear{flex:none;width:40px;height:38px;border:0;background:transparent;color:var(--tx2);cursor:pointer;padding:0;font-size:18px;line-height:1}
+.search-clear:hover{color:var(--tx)}
+.search-status{font-size:12px;color:var(--tx2);padding:0 2px}
 #warn{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);background:transparent;border-radius:5px;min-height:28px;padding:0 8px;color:var(--chg);cursor:pointer;text-align:left;font-size:12.5px}
 [hidden]{display:none!important} /* the author rules for .btn etc. would otherwise show hidden elements */
 .group{font-size:12px;font-weight:650;color:var(--tx2);margin:10px 0 0}
@@ -220,7 +224,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 .step b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--tx);color:var(--bg);text-align:center;font-size:12px;line-height:22px}
 .empty{color:var(--tx2);padding:30px;text-align:center}
 
-#menu{display:none;margin-left:auto;margin-right:8px;min-height:28px}
+#menu{display:none;margin-left:auto;margin-right:8px}
 @media (max-width:1100px){
   #menu{display:inline-flex}
   body:not(.menu-open) #outline,body:not(.menu-open) #flows,body:not(.menu-open) #impactList{display:none}
@@ -268,7 +272,8 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 <div id="app">
   <nav id="side" aria-label="导航">
     <div class="brand"><b id="sysTitle"></b><button class="btn icon" id="searchToggle" aria-label="搜索节点" aria-controls="searchBox" aria-expanded="false" title="搜索节点 (/)"><svg class="ic" width="14" height="14" aria-hidden="true"><use href="#i-search"/></svg></button><button class="btn" id="menu" aria-expanded="false">目录</button><button id="theme" class="switch" role="switch" aria-label="深色主题"></button></div>
-    <label class="search" id="searchBox" hidden><svg class="ic" width="14" height="14"><use href="#i-search"/></svg><input id="search" placeholder="搜索节点" aria-label="搜索节点"><kbd>/</kbd></label>
+    <div class="search" id="searchBox" role="search" hidden><svg class="ic" width="14" height="14" aria-hidden="true"><use href="#i-search"/></svg><input id="search" placeholder="搜索节点" aria-label="搜索节点"><button class="search-clear" id="searchClear" type="button" aria-label="清空搜索" title="清空搜索" hidden>×</button></div>
+    <div class="search-status" id="searchStatus" role="status" aria-live="polite" hidden></div>
     <button id="warn" hidden></button>
     <div id="impactList"></div>
     <div id="outline"></div>
@@ -763,6 +768,12 @@ function renderSide() {
   const keep = new Map(), wired = new Set(D.impact.summary.wired);
   const visit = (id) => { const n = byId.get(id); let any = match(n); for (const c of n.children) any = visit(c) || any; keep.set(id, any); return any; };
   roots().forEach(visit);
+  const count = q ? D.nodes.filter(match).length : 0;
+  $("searchStatus").hidden = !q;
+  $("searchStatus").textContent = q ? `找到 ${count} 个节点` : "";
+  $("searchClear").hidden = !query;
+  $("impactList").hidden = !!q;
+  $("flows").hidden = !!q;
   const walk = (id) => {
     if (!keep.get(id)) return "";
     const n = byId.get(id);
@@ -1073,6 +1084,7 @@ document.addEventListener("click", (ev) => {
     renderAll(); return;
   }
   if (t.closest("#searchToggle")) { setSearchOpen($("searchBox").hidden); return; }
+  if (t.closest("#searchClear")) { $("search").value = ""; query = ""; renderSide(); $("search").focus(); return; }
   if (t.closest("#menu")) { const on = document.body.classList.toggle("menu-open"); $("menu").setAttribute("aria-expanded", String(on)); return; }
   if (t.closest("#outer")) { showOuter = !showOuter; $("outer").setAttribute("aria-pressed", String(showOuter)); renderMap(); return; }
   const zb = t.closest("[data-zoom]");
@@ -1104,7 +1116,7 @@ document.addEventListener("keydown", (ev) => {
   if (!typing && ev.key === "0") { viewMode = "auto"; applyView(); return; }
   if (ev.key === "/" && !typing) { ev.preventDefault(); setSearchOpen(true); return; }
   if (ev.key === "Escape") {
-    if (document.activeElement === $("search")) { setSearchOpen(false); }
+    if ($("searchBox").contains(document.activeElement)) { setSearchOpen(false); }
     else if (state.diagram) { leaveDiagram(); renderAll(); }
     else if (special()) { state.impact = ""; state.hood = ""; renderAll(); }
     else if (state.flow) { state.flow = ""; renderAll(); }
