@@ -40,6 +40,8 @@ sysmap check examples/shop-plan.smap --tasks examples/shop.tasks.md
 
 `file` defaults to `$SYSMAP_FILE`, `system.smap`, then `.sysmap/system.smap`. Node ids are local to their file and may not contain a dot; a mounted node is addressed as `<mount>.<id>`. Map lines start in column 0; indent a child by two spaces. `sysmap check` prints the diagnostics (repeated messages collapse after three); other commands print errors and a one-line warning summary. `find` shows the matching description, detail or title under each hit. See [examples/shop.smap](examples/shop.smap), and run `sysmap spec` for `mount` and `bind`.
 
+Format 1 uses the format supported by Sysmap v0.1.2 as its baseline. Each map file can declare `# sysmap-format: 1` and `# sysmap-reviewed-with: v0.1.2` before its content. The latter records the release a maintainer actually reviewed the map with, not its creation version. Run `sysmap check --refs`, compare the map with the code and review `sysmap spec` before updating it. Undeclared versions stay unknown; the viewer and `check` show each mounted file's status and any available upgrade guidance. Declarations do not guarantee accuracy. Older Sysmap releases ignore these comments and may not reject future formats.
+
 ## Install
 
 From a GitHub Release (Linux or macOS, `amd64` or `arm64`), into `~/.local/bin`:

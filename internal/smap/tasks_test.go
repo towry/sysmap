@@ -179,11 +179,11 @@ func TestTaskSourceChangesTheVersion(t *testing.T) {
 func TestViewerWithoutTasksKeepsTheExactBaseline(t *testing.T) {
 	m := mustParse(t, shop)
 	page := m.HTML("src", nil, false)
-	if len(page) != 139699 || fmt.Sprintf("%x", sha256.Sum256(page)) != "6d7b1638a66676a784d4542137892de860180363729572dd1f318f0319fdba84" {
+	if len(page) != 143003 || fmt.Sprintf("%x", sha256.Sum256(page)) != "14ac016dbbac19fb1c66a4029c77614d7192e24ff22007d8b042d39e22933e06" {
 		t.Fatalf("no-tasks page changed: len=%d sha=%x", len(page), sha256.Sum256(page))
 	}
 	js := m.JSON("src", nil)
-	if len(js) != 2416 || fmt.Sprintf("%x", sha256.Sum256(js)) != "904c85ec1c36b8908ca4c9a1ab6b4149842f1f0f0e71dd80e97ef2a5af31c594" {
+	if len(js) != 2698 || fmt.Sprintf("%x", sha256.Sum256(js)) != "7dbd33a7784f702234a1148b8f6c98284c63e383ceb263c569ee4ed461bf623e" {
 		t.Fatalf("no-tasks JSON changed: len=%d sha=%x", len(js), sha256.Sum256(js))
 	}
 }

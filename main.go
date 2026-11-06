@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime/debug"
 	"strings"
 
 	"github.com/towry/sysmap/internal/smap"
@@ -40,6 +39,7 @@ read without the flag and never changes the .smap.
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
+	smap.SetProgramVersion(version)
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		fmt.Print(usage)
 		return 0
@@ -47,10 +47,7 @@ func run(args []string) int {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "version", "-v", "--version":
-		if info, ok := debug.ReadBuildInfo(); ok && version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
-			version = info.Main.Version
-		}
-		fmt.Println(version)
+		fmt.Println(smap.ProgramVersion)
 		return 0
 	case "spec":
 		fmt.Print(smap.Spec)
@@ -115,9 +112,13 @@ func run(args []string) int {
 
 	switch cmd {
 	case "accept":
-		_, m, _, err := smap.Load(path)
+		_, m, diags, err := smap.Load(path)
 		if err != nil {
 			return fail("%v", err)
+		}
+		printDiagnostics(path, false, diags)
+		if smap.HasErrors(diags) {
+			return 1
 		}
 		n, err := smap.AcceptFiles(m.Files)
 		if err != nil {
@@ -163,6 +164,7 @@ func run(args []string) int {
 	switch cmd {
 	case "check":
 		fmt.Printf("ok: %d nodes, %d edges, %d flows\n", len(m.Nodes), len(m.Edges), len(m.Flows))
+		fmt.Print(m.VersionText())
 	case "outline":
 		text, err := m.Outline(id, *depth)
 		if err != nil {

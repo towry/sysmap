@@ -26,8 +26,9 @@ var (
 	nodeRe = regexp.MustCompile(`^(?:([+~])\s+)?(core|biz|ext)\s+` + idPat + `(?:\s+"([^"]*)")?(?:\s*:\s*(.*))?$`)
 	edgeRe = regexp.MustCompile(`^` + refPat + `\s+(->|~>)\s+` + refPat + `(?:\s*:\s*(.*))?$`)
 
-	mountRe = regexp.MustCompile(`^mount\s+(\S+)$`)
-	bindRe  = regexp.MustCompile(`^bind\s+` + idPat + `\s*=\s*` + refPat + `$`)
+	mountRe          = regexp.MustCompile(`^mount\s+(\S+)$`)
+	bindRe           = regexp.MustCompile(`^bind\s+` + idPat + `\s*=\s*` + refPat + `$`)
+	versionCommentRe = regexp.MustCompile(`^#\s*sysmap-(?:format|reviewed-with)(?:\b|:)`)
 )
 
 type frame struct {
@@ -48,14 +49,43 @@ func Parse(src string) (*Model, []Diag) {
 	var stack []frame
 	var last *Node
 	flow := -1 // index into m.Flows of the open flow
+	fileVersion := FileVersion{}
+	seenVersion := map[string]bool{}
+	contentStarted := false
 
 	for i, raw := range strings.Split(src, "\n") {
 		ln := i + 1
 		raw = strings.TrimRight(raw, "\r")
 		t := strings.TrimSpace(raw)
+		if versionCommentRe.MatchString(t) {
+			key, value, ok := strings.Cut(strings.TrimPrefix(t, "# "), ":")
+			if !ok || (key != "sysmap-format" && key != "sysmap-reviewed-with") {
+				fail(ln, "malformed sysmap version declaration")
+				continue
+			}
+			if seenVersion[key] || contentStarted || raw != t {
+				fail(ln, "%s must appear once at the top of the file", key)
+				continue
+			}
+			seenVersion[key] = true
+			value = strings.TrimSpace(value)
+			if key == "sysmap-format" {
+				if value != "1" {
+					fail(ln, "unsupported or invalid sysmap format %q; this version supports format 1", value)
+				}
+				fileVersion.Format = value
+			} else {
+				if !releaseVersion.MatchString(value) {
+					fail(ln, "invalid sysmap reviewed version %q; expected a stable release such as v0.1.2", value)
+				}
+				fileVersion.Reviewed = value
+			}
+			continue
+		}
 		if t == "" || t[0] == '#' {
 			continue
 		}
+		contentStarted = true
 		lead := raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
 		if strings.Contains(lead, "\t") {
 			fail(ln, "indent with 2 spaces, not tabs")
@@ -182,5 +212,6 @@ func Parse(src string) (*Model, []Diag) {
 			fail(ln, "cannot parse this line; expected `core|biz|ext <id> \"Title\" : desc`, `a -> b : label`, `flow <id>`, `| detail` or `@ path`")
 		}
 	}
+	m.FileVersions = []FileVersion{fileVersion}
 	return m, diags
 }

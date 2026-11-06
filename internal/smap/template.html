@@ -46,6 +46,9 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .mono{font-family:var(--mono)}
 
 #app{display:grid;grid-template-columns:250px minmax(0,1fr) 320px;height:100vh}
+#app.diagram-expanded{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100vh}
+#app.diagram-expanded #side,#app.diagram-expanded #detail{display:none}
+#app.diagram-expanded #page{min-height:0}
 
 /* sidebar */
 #side{overflow:auto;border-right:1px solid var(--ui);padding:14px 8px 14px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px}
@@ -55,7 +58,8 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .switch .ic{position:absolute;top:4px;width:14px;height:14px}
 .switch .knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--tx);transition:transform .15s}
 :root[data-theme=dark] .switch .knob{transform:translateX(22px)}
-.brand b{font-size:15px;font-weight:700;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#searchToggle{flex:none}
 .search{display:flex;align-items:center;gap:8px;border:1px solid var(--ui2);border-radius:5px;padding:0 8px;min-height:30px;color:var(--tx2);font-size:13px;background:var(--bg);transition:border-color .12s}
 .search:hover,.search:focus-within{border-color:var(--ui3)}
 .search input{flex:1;min-width:0;border:0;background:transparent;outline:none;color:var(--tx)}
@@ -116,6 +120,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 #diagramBar{display:flex;gap:10px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--ui);font-size:12.5px;color:var(--tx2);background:var(--card)}
 #diagramBar code{font:12px var(--mono);color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 #diagramBar .btn{min-height:26px;padding:0 8px;margin-left:auto}
+#diagramBar #toggleSidebars{margin-left:0}
 #card.diagram .cardfoot .lg{display:none}
 /* Pele reads these variables; mapping them to the page palette is what makes a diagram follow the theme. */
 .pele-theme{--pele-bg:var(--card);--pele-fg:var(--tx);--pele-muted:var(--tx2);--pele-line:var(--edge);--pele-surface:var(--bg2);--pele-surface-alt:var(--ui);--pele-border:var(--ui3);--pele-accent:var(--accent);--pele-critical:var(--chg);--pele-font:var(--sans);--pele-font-mono:var(--mono);--pele-radius:4px}
@@ -262,8 +267,8 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
 </defs></svg>
 <div id="app">
   <nav id="side" aria-label="导航">
-    <div class="brand"><b id="sysTitle"></b><button class="btn" id="menu" aria-expanded="false">目录</button><button id="theme" class="switch" role="switch" aria-label="深色主题"></button></div>
-    <label class="search"><svg class="ic" width="14" height="14"><use href="#i-search"/></svg><input id="search" placeholder="搜索节点" aria-label="搜索节点"><kbd>/</kbd></label>
+    <div class="brand"><b id="sysTitle"></b><button class="btn icon" id="searchToggle" aria-label="搜索节点" aria-controls="searchBox" aria-expanded="false" title="搜索节点 (/)"><svg class="ic" width="14" height="14" aria-hidden="true"><use href="#i-search"/></svg></button><button class="btn" id="menu" aria-expanded="false">目录</button><button id="theme" class="switch" role="switch" aria-label="深色主题"></button></div>
+    <label class="search" id="searchBox" hidden><svg class="ic" width="14" height="14"><use href="#i-search"/></svg><input id="search" placeholder="搜索节点" aria-label="搜索节点"><kbd>/</kbd></label>
     <button id="warn" hidden></button>
     <div id="impactList"></div>
     <div id="outline"></div>
@@ -276,7 +281,7 @@ h1{font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;margin:
       <div class="titlerow"><span class="navbtns"><button class="btn icon" id="back" aria-label="后退 (Alt+←)" title="后退 (Alt+←)"><svg class="ic" width="14" height="14"><use href="#i-back"/></svg></button><button class="btn icon" id="fwd" aria-label="前进 (Alt+→)" title="前进 (Alt+→)"><svg class="ic" width="14" height="14"><use href="#i-chev"/></svg></button></span><h1 id="scopeTitle"></h1><span id="lead"></span><span id="stats"></span></div>
     </div>
     <section id="card">
-      <div id="diagramBar" hidden><span class="lab">Mermaid 图</span><code id="diagramPath"></code><button class="btn" id="backToMap">返回架构图 <span class="lab">Esc</span></button></div>
+      <div id="diagramBar" hidden><span class="lab">Mermaid 图</span><code id="diagramPath"></code><button class="btn" id="toggleSidebars" aria-controls="side detail" aria-expanded="true">隐藏侧栏</button><button class="btn" id="backToMap">返回架构图 <span class="lab">Esc</span></button></div>
       <div id="viewport"><div id="canvas"><div id="areas"></div><svg id="edges"></svg><div id="nodes"></div><svg id="pills"></svg><div id="diagramPane" class="pele-theme" hidden></div></div></div>
       <div class="cardfoot"><span class="lg"><i style="border-color:var(--core);background:color-mix(in srgb,var(--core) 14%,var(--node))"></i>通用边界</span><span class="lg"><i style="border-color:var(--biz);background:color-mix(in srgb,var(--biz) 14%,var(--node))"></i>业务节点</span><span class="lg"><i style="border-color:var(--ext);border-style:dashed"></i>外部系统</span><span class="lg"><i style="border-color:var(--new)"></i>计划新增</span><span class="lg"><i style="border-color:var(--chg)"></i>计划修改</span><span class="lg" title="线上的数字是这两块之间的依赖条数;线从依赖方指向被依赖方"><i class="cnt">2</i>线上数字 = 依赖条数</span><div id="tools">        <span id="hops" hidden><button class="btn" data-hops="1">1 步</button><button class="btn" data-hops="2">2 步</button><button class="btn" data-hops="3">3 步</button></span>        <button class="btn" id="impactOff" hidden>退出这个视图</button>        <button class="btn" id="outer" aria-pressed="false" title="同时画出这一层之外、与它有关联的节点">层外关联</button>        <button class="btn icon" data-zoom="-" aria-label="缩小"><svg class="ic" width="14" height="14"><use href="#i-minus"/></svg></button><output id="zlabel"></output><button class="btn icon" data-zoom="+" aria-label="放大"><svg class="ic" width="14" height="14"><use href="#i-plus"/></svg></button><button class="btn" data-zoom="auto" title="默认大小;图太宽时缩小(不小于 75%)">默认</button><button class="btn" data-zoom="fit" title="把整张图放进窗口"><svg class="ic" width="14" height="14"><use href="#i-fit"/></svg>适应</button>      </div></div>
     </section>
@@ -297,7 +302,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const ic = (name, size = 14) => `<svg class="ic" width="${size}" height="${size}"><use href="#i-${name}"/></svg>`;
 
-let D, byId, state = {scope: "", sel: "", flow: "", impact: "", hood: "", hops: 2, diagram: "", diagramIndex: 0}, open = new Set(), query = "";
+let D, byId, connectionLost = false, state = {scope: "", sel: "", flow: "", impact: "", hood: "", hops: 2, diagram: "", diagramIndex: 0}, open = new Set(), query = "";
 // The zoom stays between ZMIN and ZMAX, so one level never ends up too small to read or so large
 // that a single node fills the card.
 const ZMIN = 0.25, ZMAX = 1.5;
@@ -533,6 +538,9 @@ function renderMap() {
   W = isNarrow() ? 196 : 244; // phones: narrower nodes so a level fits the screen
   H = isNarrow() ? 116 : 118;
   if (state.diagram) { renderDiagram(); return; }
+  $("app").classList.remove("diagram-expanded");
+  $("toggleSidebars").setAttribute("aria-expanded", "true");
+  $("toggleSidebars").textContent = "隐藏侧栏";
   $("diagramBar").hidden = true;
   $("diagramPane").hidden = true;
   $("canvas").classList.remove("diagram");
@@ -858,7 +866,9 @@ function renderDetail() {
   if (!n) {
     const c = {core: 0, biz: 0, ext: 0}; D.nodes.forEach((x) => c[x.kind]++);
     const hubs = D.nodes.filter((x) => x.kind === "core" && x.fanin).sort((a, b) => b.fanin - a.fanin).slice(0, 5);
-    el.innerHTML = `<h2>总览</h2><p class="lab">${c.core} 个通用节点,${c.biz} 个业务节点,${c.ext} 个外部系统。</p>${impactBox()}${hubs.length ? `<h3>被依赖最多的通用节点</h3><ul>${hubs.map((h) => `<li>${link(h.id)} <span class="lab">被 ${h.fanin} 个依赖</span></li>`).join("")}</ul>` : ""}<p class="lab">单击图里的节点看详情,双击进入下一层,Esc 返回上一层。拖动空白处平移,双指捏合或按住 Ctrl/⌘ 滚动缩放,+ - 0 键缩放。</p>`;
+    const versions = (D.fileVersions || []).map((f) => `<li><code>${esc(f.file || "当前文件")}</code><div class="lab">格式: ${esc(f.format || "未声明")} · 维护版本: ${esc(f.reviewed || "未知")}</div><div class="lab">${esc(f.advice)}</div></li>`).join("");
+    const stale = connectionLost ? `<p class="lab">无法读取当前文件，以下版本信息来自上一个可用快照。</p>` : D.diags.some((d) => d.level === "error") ? `<p class="lab">文件存在错误，以下版本信息来自上一个可用快照，不代表当前文件状态。</p>` : "";
+    el.innerHTML = `<h2>总览</h2><p class="lab">${c.core} 个通用节点,${c.biz} 个业务节点,${c.ext} 个外部系统。</p><h3>版本与维护</h3><p class="lab">Sysmap ${esc(D.programVersion || "未知")} · ${stale ? "上一个可用快照" : document.body.dataset.live ? "实时文件状态" : "离线生成时的状态"}</p>${stale}<ul>${versions}</ul>${impactBox()}${hubs.length ? `<h3>被依赖最多的通用节点</h3><ul>${hubs.map((h) => `<li>${link(h.id)} <span class="lab">被 ${h.fanin} 个依赖</span></li>`).join("")}</ul>` : ""}<p class="lab">单击图里的节点看详情,双击进入下一层,Esc 返回上一层。拖动空白处平移,双指捏合或按住 Ctrl/⌘ 滚动缩放,+ - 0 键缩放。</p>`;
     return;
   }
   const out = new Map(), inn = new Map();
@@ -896,6 +906,7 @@ function renderChrome() {
   b.classList.toggle("err", errs > 0);
   if (!D.diags.length) b.classList.remove("on"); else if (errs) b.classList.add("on");
   b.innerHTML = (errs ? "文件有错误,页面显示的是上一个可用版本。" : "提示:") + "<br>" + D.diags.slice(0, 8).map((d) => `${d.file ? esc(d.file) + ":" + d.line : "第 " + d.line + " 行"} [${d.level}] ${esc(d.msg)}`).join("<br>");
+  if (connectionLost) { b.classList.add("on", "err"); b.textContent = "无法连接服务或读取文件，页面显示的是上一个可用快照。"; }
   $("outer").setAttribute("aria-pressed", String(showOuter));
 }
 
@@ -982,6 +993,20 @@ function pickFlow(id) {
   renderAll();
 }
 
+function setSearchOpen(on) {
+  if (on && $("app").classList.contains("diagram-expanded")) $("toggleSidebars").click();
+  $("searchBox").hidden = !on;
+  $("searchToggle").setAttribute("aria-expanded", String(on));
+  $("searchToggle").setAttribute("aria-label", on ? "关闭搜索" : "搜索节点");
+  $("searchToggle").title = on ? "关闭搜索" : "搜索节点 (/)";
+  if (on) {
+    if (matchMedia("(max-width:1100px)").matches) { document.body.classList.add("menu-open"); $("menu").setAttribute("aria-expanded", "true"); }
+    $("search").focus();
+  } else {
+    $("search").value = ""; query = ""; renderSide(); $("searchToggle").focus();
+  }
+}
+
 document.addEventListener("click", (ev) => {
   if (suppressClick) { suppressClick = false; return; }
   const t = ev.target;
@@ -1004,6 +1029,13 @@ document.addEventListener("click", (ev) => {
     state.flow = ""; state.impact = ""; state.hood = ""; state.sel = dg.dataset.diagram;
     viewMode = "fit"; lastLayoutKey = ""; renderAll(); return;
   }
+  if (t.closest("#toggleSidebars")) {
+    const expanded = $("app").classList.toggle("diagram-expanded");
+    $("toggleSidebars").setAttribute("aria-expanded", String(!expanded));
+    $("toggleSidebars").textContent = expanded ? "显示侧栏" : "隐藏侧栏";
+    if (viewMode !== "free") applyView();
+    return;
+  }
   if (t.closest("#backToMap")) { leaveDiagram(); renderAll(); return; }
   const node = t.closest(".node");
   if (node && t.closest("[data-kids]")) { enter(node.dataset.id); renderAll(); return; }
@@ -1015,6 +1047,7 @@ document.addEventListener("click", (ev) => {
     else { lastClick = {id, at: now}; state.sel = id; }
     renderAll(); return;
   }
+  if (t.closest("#searchToggle")) { setSearchOpen($("searchBox").hidden); return; }
   if (t.closest("#menu")) { const on = document.body.classList.toggle("menu-open"); $("menu").setAttribute("aria-expanded", String(on)); return; }
   if (t.closest("#outer")) { showOuter = !showOuter; $("outer").setAttribute("aria-pressed", String(showOuter)); renderMap(); return; }
   const zb = t.closest("[data-zoom]");
@@ -1044,9 +1077,9 @@ document.addEventListener("keydown", (ev) => {
   if (!typing && (ev.key === "+" || ev.key === "=")) { zoomBy(1.25); return; }
   if (!typing && (ev.key === "-" || ev.key === "_")) { zoomBy(0.8); return; }
   if (!typing && ev.key === "0") { viewMode = "auto"; applyView(); return; }
-  if (ev.key === "/" && !typing) { ev.preventDefault(); $("search").focus(); return; }
+  if (ev.key === "/" && !typing) { ev.preventDefault(); setSearchOpen(true); return; }
   if (ev.key === "Escape") {
-    if (document.activeElement === $("search")) { $("search").value = ""; query = ""; $("search").blur(); renderSide(); }
+    if (document.activeElement === $("search")) { setSearchOpen(false); }
     else if (state.diagram) { leaveDiagram(); renderAll(); }
     else if (special()) { state.impact = ""; state.hood = ""; renderAll(); }
     else if (state.flow) { state.flow = ""; renderAll(); }
@@ -1112,8 +1145,8 @@ if (document.body.dataset.live) {
       const d = await (await fetch("/data.json", {cache: "no-store"})).json();
       // A map that gains its first diagram needs the renderer, which is only in the page that was served with one.
       if (d.nodes.some((n) => (n.diagrams || []).length) && typeof pele === "undefined") { location.reload(); return; }
-      if (d.version !== D.version || JSON.stringify(d.diags) !== JSON.stringify(D.diags)) { setData(d); renderAll(); }
-    } catch (e) { /* server stopped; keep what is shown */ }
+      if (connectionLost || d.version !== D.version || d.programVersion !== D.programVersion || JSON.stringify(d.diags) !== JSON.stringify(D.diags) || JSON.stringify(d.fileVersions) !== JSON.stringify(D.fileVersions)) { connectionLost = false; setData(d); renderAll(); }
+    } catch (e) { if (!connectionLost) { connectionLost = true; renderChrome(); renderDetail(); } }
   }, 1500);
 }
 </script>

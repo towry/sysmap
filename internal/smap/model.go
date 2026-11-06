@@ -64,14 +64,15 @@ type Flow struct {
 }
 
 type Model struct {
-	Title, Desc string
-	Nodes       map[string]*Node
-	Order       []string // declaration order
-	Roots       []string
-	Edges       []Edge
-	Flows       []Flow
-	Files       []string          // every .smap file in the map, the root first
-	Alias       map[string]string // an id that a bind removed -> the node it was bound to
+	Title, Desc  string
+	Nodes        map[string]*Node
+	Order        []string // declaration order
+	Roots        []string
+	Edges        []Edge
+	Flows        []Flow
+	Files        []string // every .smap file in the map, the root first
+	FileVersions []FileVersion
+	Alias        map[string]string // an id that a bind removed -> the node it was bound to
 }
 
 // Ancestors returns the parents of id, nearest first.

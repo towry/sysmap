@@ -1,8 +1,8 @@
 services:
   sysmap:
-    command: go run . serve examples/shop.smap --tasks examples/shop.tasks.md -addr "0.0.0.0:$PORT"
+    command: go run . serve examples/shop-plan.smap --tasks examples/shop.tasks.md -addr "0.0.0.0:$PORT"
     health: /
     portal:
       url: /
       title: Sysmap Viewer
-      description: Interactive architecture viewer for examples/shop.smap
+      description: Interactive architecture viewer for examples/shop-plan.smap

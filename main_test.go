@@ -45,6 +45,40 @@ func TestCheckReportsAMissingDiagramWithItsLine(t *testing.T) {
 	}
 }
 
+func TestAcceptDoesNotWriteWhenAnyFileHasErrors(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "root.smap")
+	child := filepath.Join(dir, "child.smap")
+	rootSource := "+ biz parent\n  mount child.smap\n"
+	for _, childSource := range []string{"# sysmap-format: 2\n+ biz child\n", "not valid syntax\n+ biz child\n"} {
+		if err := os.WriteFile(root, []byte(rootSource), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(child, []byte(childSource), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr := captureRun(t, "accept", root)
+		if code != 1 || !strings.Contains(stderr, "error:") {
+			t.Fatalf("accept: %d %q", code, stderr)
+		}
+		for path, want := range map[string]string{root: rootSource, child: childSource} {
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != want {
+				t.Fatalf("%s changed: %q (%v)", path, got, err)
+			}
+		}
+	}
+	if err := os.Remove(child); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := captureRun(t, "accept", root); code != 1 {
+		t.Fatalf("accept missing mount: %d", code)
+	}
+	if got, _ := os.ReadFile(root); string(got) != rootSource {
+		t.Fatalf("root changed: %q", got)
+	}
+}
+
 func captureRun(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	oldOut, oldErr := os.Stdout, os.Stderr

@@ -3,6 +3,8 @@ package smap
 // Spec is printed by `sysmap spec`, so an agent never has to guess the format.
 const Spec = `sysmap file format (*.smap): plain text, 2-space indent, # starts a comment.
 
+# sysmap-format: 1
+# sysmap-reviewed-with: v0.1.2
 system "Name" : one line on what the system is
 
 core platform "Platform" : shared by many business nodes; change with care
@@ -18,6 +20,14 @@ invoice -> ledger : post entry      (-> call, ~> async)
 
 flow checkout "Checkout" : optional note
   cart -> invoice : submit order    (steps follow the edges above)
+
+version declarations
+  Format 1 uses the format supported by Sysmap v0.1.2 as its baseline. Each file may
+  declare format 1 and the stable Sysmap release it was last reviewed with.
+  Put each declaration at most once before map content; do not guess a historical version.
+  Run 'sysmap check --refs' and review this spec before recording a reviewed-with version.
+  Declarations do not prove the map matches the code. Old Sysmap releases ignore these
+  comments and cannot be relied on to reject unsupported future formats.
 
 kinds
   core  shared boundary, used across business nodes
