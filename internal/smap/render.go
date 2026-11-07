@@ -63,21 +63,22 @@ type jsonProgress struct {
 }
 
 type jsonNode struct {
-	ID       string        `json:"id"`
-	Kind     Kind          `json:"kind"`
-	Title    string        `json:"title"`
-	Desc     string        `json:"desc"`
-	Detail   []string      `json:"detail"`
-	Refs     []string      `json:"refs"`
-	Diagrams []jsonDiagram `json:"diagrams"`
-	Parent   string        `json:"parent"`
-	Children []string      `json:"children"`
-	Mark     string        `json:"mark"`
-	FanIn    int           `json:"fanin"`
-	File     string        `json:"file"`
-	Area     string        `json:"area"`
-	Progress *jsonProgress `json:"progress,omitempty"`
-	Tasks    []jsonTask    `json:"tasks,omitempty"`
+	ID        string        `json:"id"`
+	Kind      Kind          `json:"kind"`
+	Title     string        `json:"title"`
+	Desc      string        `json:"desc"`
+	Detail    []string      `json:"detail"`
+	Refs      []string      `json:"refs"`
+	Diagrams  []jsonDiagram `json:"diagrams"`
+	Parent    string        `json:"parent"`
+	Children  []string      `json:"children"`
+	Mark      string        `json:"mark"`
+	FanIn     int           `json:"fanin"`
+	File      string        `json:"file"`
+	Area      string        `json:"area"`
+	StoreJoin *StoreJoin    `json:"storeJoin,omitempty"`
+	Progress  *jsonProgress `json:"progress,omitempty"`
+	Tasks     []jsonTask    `json:"tasks,omitempty"`
 }
 
 type jsonEdge struct {
@@ -146,7 +147,8 @@ func (m *Model) JSONWithTasks(source string, tasks *TaskOverlay, diags []Diag) [
 		jn := jsonNode{ID: id, Kind: n.Kind, Title: n.Title, Desc: n.Desc,
 			Detail: orEmpty(n.Detail), Refs: orEmpty(n.Refs), Diagrams: jsonDiagrams(n.Diagrams),
 			Parent: n.Parent, Children: orEmpty(n.Children),
-			Mark: n.Mark, FanIn: len(m.FanIn(id)), File: n.File, Area: m.Area(id)}
+			Mark: n.Mark, FanIn: len(m.FanIn(id)), File: n.File, Area: m.Area(id),
+			StoreJoin: m.NodeStoreJoin(id)}
 		if p, ok := progress[id]; ok && p.Total > 0 {
 			jn.Progress = &jsonProgress{Done: p.Done, Doing: p.Doing, Total: p.Total}
 		}

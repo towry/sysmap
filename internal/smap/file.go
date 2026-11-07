@@ -38,8 +38,10 @@ func Load(path string) (string, *Model, []Diag, error) {
 	}
 	abs, _ := filepath.Abs(path)
 	l.expand(m, []string{abs})
-	// Cycles are decided on the composed edges, after every bind has been applied.
+	// Flows, cycles and multi-store joins are decided on the composed model, after every bind has been applied.
+	l.diags = append(l.diags, m.checkFlows()...)
 	l.diags = append(l.diags, m.checkCycles()...)
+	l.diags = append(l.diags, m.checkStoreJoins()...)
 	return l.source(m), m, l.finish(m), nil
 }
 
