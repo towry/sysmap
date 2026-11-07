@@ -116,6 +116,7 @@ func Parse(src string) (*Model, []Diag) {
 				continue
 			}
 			last.Detail = append(last.Detail, strings.TrimPrefix(strings.TrimPrefix(t, "|"), " "))
+			last.DetailLines = append(last.DetailLines, ln)
 
 		case t[0] == '@':
 			if last == nil {

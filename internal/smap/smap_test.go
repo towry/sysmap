@@ -1246,6 +1246,135 @@ func TestCheckRefsFallsBackToTheMapDirectoryWithoutGit(t *testing.T) {
 	}
 }
 
+func TestCheckRefsAllowsMissingFilesOnPlannedNewNodesAndValidatesContainment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeMapFile(t, dir, "app/existing.go", "one\ntwo\n")
+	root := writeMapFile(t, dir, "maps/root.smap", `system "PlannedRefs"
++ biz gate "Gate"
+  @ app/new_gate.go
+  @ app/existing.go:2
+  @ app/existing.go:5
+  @ ../../outside.go
+~ biz edited "Edited"
+  @ app/missing_on_tilde.go
+`)
+	_, m, _, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refDiags := m.CheckRefs()
+	if len(refDiags) != 3 {
+		t.Fatalf("CheckRefs = %+v, want 3 errors (existing:5, outside, missing_on_tilde)", refDiags)
+	}
+	wantLines := map[int]string{
+		5: "app/existing.go has only 2 lines",
+		6: "must be relative to the repository root and inside",
+		8: "app/missing_on_tilde.go does not exist",
+	}
+	for line, substr := range wantLines {
+		found := false
+		for _, d := range refDiags {
+			if d.Line == line && d.Level == "error" && strings.Contains(d.Msg, substr) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("line %d: expected error containing %q in %+v", line, substr, refDiags)
+		}
+	}
+}
+
+func TestCheckAcceptBlocksUnresolvedOpenCaveatsAndMissingPlannedRefs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	child := writeMapFile(t, dir, "maps/child.smap", `+ biz gate "Gate"
+  | open: which price source?
+  | unverified: latency under load
+  @ app/new_gate.go
+biz steady "Steady"
+  | open: untouched node question
+`)
+	root := writeMapFile(t, dir, "maps/root.smap", `core sub "Sub"
+  mount child.smap
+`)
+	_, m, _, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refs := m.CheckRefs(); len(refs) != 0 {
+		t.Fatalf("CheckRefs during planning = %+v, want 0 errors", refs)
+	}
+	acceptDiags := m.CheckAccept()
+	if len(acceptDiags) != 2 {
+		t.Fatalf("CheckAccept = %+v, want 2 errors (open caveat and missing new_gate.go)", acceptDiags)
+	}
+	if acceptDiags[0].File != child || acceptDiags[0].Line != 2 || !strings.Contains(acceptDiags[0].Msg, `planned node "sub.gate" still has an open: caveat`) {
+		t.Errorf("open caveat diag = %+v", acceptDiags[0])
+	}
+	if acceptDiags[1].File != child || acceptDiags[1].Line != 4 || !strings.Contains(acceptDiags[1].Msg, `planned node "sub.gate" reference "app/new_gate.go": app/new_gate.go does not exist`) {
+		t.Errorf("missing ref diag = %+v", acceptDiags[1])
+	}
+}
+
+func TestCheckTouchedWarnsForUnmarkedAndUnmappedCodeFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	child := writeMapFile(t, dir, "maps/orders.smap", `biz container "Orders"
+  @ app/orders
+  ~ biz checkout "Checkout"
+    @ app/orders/checkout.go:10
+  + biz refund "Refund"
+    @ app/orders/refund.go
+biz invoice "Invoice"
+  @ app/billing/invoice.go:5
+`)
+	root := writeMapFile(t, dir, "maps/root.smap", `core orders "Orders"
+  mount orders.smap
+`)
+	_, m, _, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.CheckTouched([]string{"", "  ,  ", "maps/orders.smap", "docs/flow.mmd", "PLAN.md"}); len(got) != 0 {
+		t.Fatalf("ignored/blank touched files produced diagnostics: %+v", got)
+	}
+	// checkout.go and refund.go match specific ~ and + children inside unmarked container (app/orders).
+	if got := m.CheckTouched([]string{"app/orders/checkout.go\napp/orders/refund.go"}); len(got) != 0 {
+		t.Fatalf("files covered by most-specific ~ or + nodes must not warn: %+v", got)
+	}
+	// cart.go falls back to unmarked container (app/orders); invoice.go hits unmarked invoice; orphan.go is unmapped.
+	diags := m.CheckTouched([]string{"app/orders/cart.go, app/billing/invoice.go\napp/unmapped/orphan.go"})
+	if len(diags) != 3 {
+		t.Fatalf("CheckTouched = %+v, want 3 warnings", diags)
+	}
+	for _, want := range []struct {
+		file string
+		line int
+		text string
+	}{
+		{child, 2, `touched file "app/orders/cart.go" belongs to unmarked node "orders.container"; mark it ~ before running impact`},
+		{child, 8, `touched file "app/billing/invoice.go" belongs to unmarked node "orders.invoice"; mark it ~ before running impact`},
+		{root, 1, `touched file "app/unmapped/orphan.go" is not covered by any @ reference in the map`},
+	} {
+		found := false
+		for _, d := range diags {
+			if d.Level == "warn" && d.File == want.file && d.Line == want.line && strings.Contains(d.Msg, want.text) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing warning %+v in %+v", want, diags)
+		}
+	}
+}
+
 // --- containment and dependency-cycle warnings ---
 
 func cycleWarnings(diags []Diag) []Diag {

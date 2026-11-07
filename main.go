@@ -18,7 +18,7 @@ const usage = `sysmap: a system map an agent can maintain and a person can brows
   sysmap show <id|flow> [file]        zoom into a node, or print a flow's steps
   sysmap find <query> [file]          search ids, titles, descriptions and detail lines
   sysmap find --caveats [file]        list nodes with unverified: or open: caveats
-  sysmap check [file] [--refs]        validate references, boundary rules and @ code refs
+  sysmap check [file] [--refs] [--touched files]  validate rules, @ refs and touched files
   sysmap impact [file] [--json]       reach of planned nodes (+ new, ~ changed)
   sysmap accept [file]                drop the + and ~ markers in every file once shipped
   sysmap build [file] [-o out.html]   write one shareable HTML file
@@ -31,7 +31,8 @@ file ends in .smap or contains a /; any other word is a node id (for find, the q
 A node id is local to its file and may not contain a dot; a mounted node is addressed as
 <mount>.<id>, and a bind target may be dotted. file defaults to $SYSMAP_FILE, system.smap,
 then .sysmap/system.smap. --refs resolves @ path[:line] from the nearest ancestor of the
-map file that contains .git, or from the map file's own directory.
+map file that contains .git, or from the map file's own directory. --touched <files> on
+check warns when a changed code file is not covered by a + or ~ node.
 --tasks <file> joins a Markdown checklist for serve, build, json and check; it is never
 read without the flag and never changes the .smap.
 `
@@ -68,12 +69,17 @@ func run(args []string) int {
 	refs := fs.Bool("refs", false, "verify @ path[:line] references")
 	caveats := fs.Bool("caveats", false, "list nodes with unverified: or open: caveats")
 	tasks := fs.String("tasks", "", "tasks checklist file")
+	var touched stringListFlag
+	fs.Var(&touched, "touched", "touched code files (comma- or whitespace-separated)")
 	positional, err := parseInterleaved(fs, rest)
 	if err != nil {
 		return 2
 	}
 	if *tasks != "" && cmd != "serve" && cmd != "build" && cmd != "json" && cmd != "check" {
 		return fail("--tasks is only supported by serve, build, json and check")
+	}
+	if len(touched) > 0 && cmd != "check" {
+		return fail("--touched is only supported by check")
 	}
 
 	// show takes an id first; outline takes an optional id last. Anything that looks like a
@@ -116,6 +122,7 @@ func run(args []string) int {
 		if err != nil {
 			return fail("%v", err)
 		}
+		diags = append(diags, m.CheckAccept()...)
 		printDiagnostics(path, false, diags)
 		if smap.HasErrors(diags) {
 			return 1
@@ -143,6 +150,9 @@ func run(args []string) int {
 	}
 	if cmd == "check" && *refs {
 		diags = append(diags, m.CheckRefs()...)
+	}
+	if cmd == "check" && len(touched) > 0 {
+		diags = append(diags, m.CheckTouched(touched)...)
 	}
 	var overlay *smap.TaskOverlay
 	if *tasks != "" {
@@ -278,6 +288,14 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 		}
 	}
 	return positional, nil
+}
+
+type stringListFlag []string
+
+func (s *stringListFlag) String() string { return strings.Join(*s, ",") }
+func (s *stringListFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
 }
 
 func fail(format string, args ...any) int {
