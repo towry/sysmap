@@ -95,7 +95,9 @@ reading the outline
 planning a change (impact shows up in the page and in 'sysmap impact')
 + biz refund "Refund" : new node, not built yet
 ~ core ledger "Ledger" : existing node that the change will modify
-  Add the edges the new node will have. After the change ships, run 'sysmap accept'.
+  Add the edges the new node will have. A + node may already list @ path refs for files it
+  will create. After the change ships, run 'sysmap accept': it checks that no + or ~ node
+  still has an open: caveat or a missing @ ref, then drops + and ~.
 
 deliberate dependency cycles
   check warns once per group of nodes that depend on each other in a cycle. If the cycle
@@ -123,7 +125,10 @@ rules checked by 'sysmap check'
          a flow step with no matching edge
          a dependency cycle between nodes, unless one of them has "| cycle: <reason>"
   --tasks also warns: a task names an unknown node; a + or ~ node has no task
-  --refs also checks each @ path[:line]: the path must exist and a line number must not
-         pass the end of a regular file. Paths resolve from the nearest ancestor of the
-         map file that contains .git, or from the map file's own directory.
+  --refs also checks each @ path[:line]: the path must stay inside the repository root,
+         exist (unless the node is marked +), and a line number must not pass the end of
+         a regular file. Paths resolve from the nearest ancestor of the map file that
+         contains .git, or from the map file's own directory.
+  --touched <files> also warns when a touched code file belongs to an unmarked node
+         (missing ~) or is not covered by any @ ref in the map.
 `

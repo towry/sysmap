@@ -24,22 +24,23 @@ type Diagram struct {
 }
 
 type Node struct {
-	ID        string
-	Kind      Kind
-	Title     string
-	Desc      string
-	Mark      string // "" | "+" planned new | "~" planned change
-	Detail    []string
-	Refs      []string
-	RefLines  []int // the line each ref was written on, parallel to Refs
-	Diagrams  []Diagram
-	Parent    string
-	Children  []string
-	Line      int
-	File      string // the .smap file that declares the node; empty for a single-file map
-	Mount     string // path of a .smap file whose top-level nodes become this node's children
-	MountLine int
-	Binds     []Bind
+	ID          string
+	Kind        Kind
+	Title       string
+	Desc        string
+	Mark        string // "" | "+" planned new | "~" planned change
+	Detail      []string
+	DetailLines []int // the line each detail was written on, parallel to Detail
+	Refs        []string
+	RefLines    []int // the line each ref was written on, parallel to Refs
+	Diagrams    []Diagram
+	Parent      string
+	Children    []string
+	Line        int
+	File        string // the .smap file that declares the node; empty for a single-file map
+	Mount       string // path of a .smap file whose top-level nodes become this node's children
+	MountLine   int
+	Binds       []Bind
 }
 
 type Edge struct {

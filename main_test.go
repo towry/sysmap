@@ -347,3 +347,57 @@ func TestFindCaveatsFlag(t *testing.T) {
 		t.Fatalf("find --caveats with a word = exit %d, stderr %q", code, errOut)
 	}
 }
+
+func TestCheckTouchedAndAcceptGatesCLI(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app/api.go"), []byte("package app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "root.smap")
+	initial := "core api \"API\"\n  @ app/api.go\n+ biz gate \"Gate\"\n  | open: settle input contract\n  @ app/gate.go\n"
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// check --refs passes during planning even though app/gate.go does not exist yet on + gate.
+	if code, _, errOut := captureRun(t, "check", "--refs", path); code != 0 || errOut != "" {
+		t.Fatalf("check --refs with planned + ref = exit %d, stderr %q", code, errOut)
+	}
+	// --touched is rejected on non-check commands, and empty --touched "" passes cleanly.
+	if code, _, errOut := captureRun(t, "outline", "--touched", "app/api.go", path); code != 1 || !strings.Contains(errOut, "--touched is only supported by check") {
+		t.Fatalf("outline --touched = exit %d, stderr %q", code, errOut)
+	}
+	if code, _, errOut := captureRun(t, "check", "--touched", "", path); code != 0 || errOut != "" {
+		t.Fatalf("check --touched empty = exit %d, stderr %q", code, errOut)
+	}
+	// Touching app/api.go warns because api is unmarked; touching app/gate.go does not warn because gate is +.
+	code, _, errOut := captureRun(t, "check", "--touched", "app/api.go,app/gate.go", path)
+	if code != 0 || !strings.Contains(errOut, `touched file "app/api.go" belongs to unmarked node "api"`) || strings.Contains(errOut, "app/gate.go") {
+		t.Fatalf("check --touched = exit %d, stderr %q", code, errOut)
+	}
+
+	// accept refuses while + gate still has an open: caveat and missing app/gate.go.
+	code, _, errOut = captureRun(t, "accept", path)
+	if code != 1 || !strings.Contains(errOut, "still has an open: caveat") || !strings.Contains(errOut, "app/gate.go does not exist") {
+		t.Fatalf("accept with open caveat and missing ref = exit %d, stderr %q", code, errOut)
+	}
+
+	// Once the open: caveat is resolved and app/gate.go lands, accept strips the + marker.
+	ready := "core api \"API\"\n  @ app/api.go\n+ biz gate \"Gate\"\n  @ app/gate.go\n"
+	if err := os.WriteFile(path, []byte(ready), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app/gate.go"), []byte("package app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := captureRun(t, "accept", path)
+	if code != 0 || errOut != "" || !strings.Contains(out, "removed 1 marker(s)") {
+		t.Fatalf("accept when ready = exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
