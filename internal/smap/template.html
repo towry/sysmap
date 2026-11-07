@@ -1041,7 +1041,7 @@ function renderChrome() {
 
 // Moving to another level or flow is a step in the browser history, so Back and Forward work
 // (and so do the buttons next to the title). Selecting a node only replaces the current step.
-let shownScope = "", shownKey = "", shownFlow = "", shownSel = "", navIndex = 0, navMax = 0, fromHistory = false;
+let shownScope = "", shownKey = "", shownFlow = "", shownSel = "", shownDiagram = "", navIndex = 0, navMax = 0, fromHistory = false;
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 let firstRender = true, pendingRender = 0, pendingFromHistory = false, enterAnim = null;
 // Is a strictly inside b? The empty scope is the root, which contains everything else.
@@ -1058,19 +1058,21 @@ function renderAll() {
   renderNow();
 }
 function renderNow() {
-  const moved = state.scope !== shownScope || state.flow !== shownFlow || viewKey() !== shownKey;
+  const dKey = state.diagram ? state.diagram + ":" + state.diagramIndex : "";
+  const moved = state.scope !== shownScope || state.flow !== shownFlow || viewKey() !== shownKey || dKey !== shownDiagram;
   const selChanged = state.sel !== shownSel;
-  if (state.scope !== shownScope || viewKey() !== shownKey) {
-    if (!firstRender && !calm.matches) enterAnim = {from: viewKey() !== shownKey ? 1 : within(state.scope, shownScope) ? 0.93 : within(shownScope, state.scope) ? 1.05 : 1};
-    shownScope = state.scope; shownKey = viewKey(); viewMode = state.diagram ? "fit" : special() ? "overview" : "auto"; // a zoom chosen for one level does not follow you into another
+  if (state.scope !== shownScope || viewKey() !== shownKey || dKey !== shownDiagram) {
+    if (!firstRender && !calm.matches && dKey === shownDiagram) enterAnim = {from: viewKey() !== shownKey ? 1 : within(state.scope, shownScope) ? 0.93 : within(shownScope, state.scope) ? 1.05 : 1};
+    shownScope = state.scope; shownKey = viewKey(); shownDiagram = dKey; viewMode = state.diagram ? "fit" : special() ? "overview" : "auto"; // a zoom chosen for one level does not follow you into another
   }
+  const initial = firstRender;
   firstRender = false;
   shownFlow = state.flow;
   shownSel = state.sel;
   // Everything is redrawn, so remember which row or node had the keyboard focus.
   const held = document.activeElement.closest && document.activeElement.closest(".node, .orow, .frow");
   const keep = held && {cls: [...held.classList].find((c) => ["node", "orow", "frow"].includes(c)), attr: held.dataset.id ? "id" : "flow", val: held.dataset.id || held.dataset.flow};
-  renderChrome(); renderPageHead(); renderMap(); renderSide(); renderDetail(); syncHash(moved && !fromHistory);
+  renderChrome(); renderPageHead(); renderMap(); renderSide(); renderDetail(); syncHash(moved && !fromHistory && !initial);
   if (moved || selChanged) $("detail").scrollTop = 0;
   $("back").disabled = navIndex <= 0; $("fwd").disabled = navIndex >= navMax;
   if (keep && document.activeElement === document.body) {
@@ -1086,6 +1088,7 @@ function syncHash(push) {
   if (state.flow) p.set("f", state.flow);
   if (state.impact) p.set("i", state.impact);
   if (state.hood) { p.set("h", state.hood); if (state.hops !== 2) p.set("k", state.hops); }
+  if (state.diagram) { p.set("d", state.diagram); if (state.diagramIndex > 0) p.set("di", state.diagramIndex); }
   const h = p.toString() ? "#" + p.toString() : "";
   // Sandboxed frames (an embedded view) may refuse to change the URL; the page still works without it.
   try {
@@ -1096,10 +1099,35 @@ function syncHash(push) {
   } catch (e) { /* no shareable link or history in this frame */ }
 }
 function readHash() {
-  const p = new URLSearchParams(location.hash.slice(1));
+  let raw = location.hash.slice(1).trim();
+  try { raw = decodeURIComponent(raw); } catch (e) {}
+  const p = new URLSearchParams(raw);
+  const bare = raw && !raw.includes("=") && !raw.includes("&") ? raw : "";
+  const hasS = p.has("s");
+  let n = p.get("n") || "", f = p.get("f") || "";
+  if (bare && D) {
+    if (D.flows.some((x) => x.id === bare)) f = bare;
+    else n = bare;
+  }
   if (state.diagram) leaveDiagram();
-  state = {scope: p.get("s") || "", sel: p.get("n") || "", flow: p.get("f") || "", impact: p.get("i") || "", hood: p.get("h") || "", hops: Math.min(3, Math.max(1, parseInt(p.get("k"), 10) || 2)), diagram: "", diagramIndex: 0};
+  state = {
+    scope: p.get("s") || "",
+    sel: n,
+    flow: f,
+    impact: p.get("i") || "",
+    hood: p.get("h") || "",
+    hops: Math.min(3, Math.max(1, parseInt(p.get("k"), 10) || 2)),
+    diagram: p.get("d") || "",
+    diagramIndex: Math.max(0, parseInt(p.get("di"), 10) || 0)
+  };
   setData(D);
+  if (state.diagram && !state.sel) state.sel = state.diagram;
+  if (state.hood && !state.sel) state.sel = state.hood;
+  if (state.impact && state.impact !== "*" && !state.sel) state.sel = state.impact;
+  if (!hasS && state.sel && !special()) state.scope = par(state.sel);
+  const focusId = state.sel || state.hood || state.scope;
+  if (focusId) anc(focusId).forEach((a) => open.add(a));
+  if (state.scope) open.add(state.scope);
 }
 
 function closeMenu() {

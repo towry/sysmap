@@ -133,4 +133,12 @@ rules checked by 'sysmap check'
          contains .git, or from the map file's own directory.
   --touched <files> also warns when a touched code file belongs to an unmarked node
          (missing ~) or is not covered by any @ ref in the map.
+
+viewer deep links (URL hash on sysmap serve / build page)
+  #n=<id>        open <id>'s parent level, highlight <id> on the canvas, and show its detail rail
+  #h=<id>[&k=N]  open the cross-level neighbourhood / store-join lineage view around <id> (k=1..3)
+  #f=<flow>      open the unfolded cross-level flow view for <flow>
+  #i=*|<id>      open the cross-level impact view for all planned nodes (*) or one node (<id>)
+  #d=<id>[&di=N] open the Mermaid diagram attached to <id> (0-based index di when several exist)
+  #s=<id>        open container <id>'s level
 `
