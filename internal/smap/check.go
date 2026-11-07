@@ -287,7 +287,7 @@ func (m *Model) checkNodeRefs(n *Node, allowMissing bool, prefix string) []Diag 
 		pathPart, num := splitRef(ref)
 		p := filepath.FromSlash(pathPart)
 		full := filepath.Join(root, p)
-		if filepath.IsAbs(p) || strings.Contains(ref, "://") || !insideDir(root, full) {
+		if filepath.IsAbs(p) || strings.Contains(ref, "://") || !insideDir(root, full) || !insideRepoSymlinks(rootReal, full) {
 			add(n.File, line, "%sreference %q must be relative to the repository root and inside %s", prefix, ref, rawRoot)
 			continue
 		}
@@ -301,10 +301,6 @@ func (m *Model) checkNodeRefs(n *Node, allowMissing bool, prefix string) []Diag 
 			} else {
 				add(n.File, line, "%sreference %q: cannot read %s: %v", prefix, ref, pathPart, err)
 			}
-			continue
-		}
-		if real, err := filepath.EvalSymlinks(full); err == nil && !insideDir(rootReal, real) {
-			add(n.File, line, "%sreference %q must be relative to the repository root and inside %s", prefix, ref, rawRoot)
 			continue
 		}
 		if num == 0 || !info.Mode().IsRegular() {
@@ -385,7 +381,7 @@ func (m *Model) CheckTouched(paths []string) []Diag {
 			}
 			full := filepath.Join(nodeRoot, p)
 			rel, err := filepath.Rel(absRoot, full)
-			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 				continue
 			}
 			cleanRef := strings.TrimPrefix(path.Clean(filepath.ToSlash(rel)), "./")
@@ -402,11 +398,15 @@ func (m *Model) CheckTouched(paths []string) []Diag {
 		maxLen := -1
 		var matches []refEntry
 		for _, e := range entries {
-			if e.refPath == touched || strings.HasPrefix(touched, e.refPath+"/") {
-				if len(e.refPath) > maxLen {
-					maxLen = len(e.refPath)
+			if e.refPath == "." || e.refPath == touched || strings.HasPrefix(touched, e.refPath+"/") {
+				specLen := len(e.refPath)
+				if e.refPath == "." {
+					specLen = 0
+				}
+				if specLen > maxLen {
+					maxLen = specLen
 					matches = []refEntry{e}
-				} else if len(e.refPath) == maxLen {
+				} else if specLen == maxLen {
 					matches = append(matches, e)
 				}
 			}
@@ -445,6 +445,50 @@ func (m *Model) CheckTouched(paths []string) []Diag {
 		}
 	}
 	return diags
+}
+
+// insideRepoSymlinks resolves the deepest existing prefix of full (and bounded symlink hops
+// when that prefix is a dangling symlink) and reports whether it stays inside rootReal.
+func insideRepoSymlinks(rootReal, full string) bool {
+	return insideRepoSymlinksDepth(rootReal, full, 0)
+}
+
+func insideRepoSymlinksDepth(rootReal, full string, depth int) bool {
+	if depth > 16 {
+		return false
+	}
+	cur := filepath.Clean(full)
+	var tail string
+	for {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			if tail != "" {
+				real = filepath.Join(real, tail)
+			}
+			return insideDir(rootReal, real)
+		}
+		if info, err := os.Lstat(cur); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if target, err := os.Readlink(cur); err == nil {
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(filepath.Dir(cur), target)
+				}
+				if tail != "" {
+					target = filepath.Join(target, tail)
+				}
+				return insideRepoSymlinksDepth(rootReal, target, depth+1)
+			}
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return insideDir(rootReal, full)
+		}
+		base := filepath.Base(cur)
+		if tail == "" {
+			tail = base
+		} else {
+			tail = filepath.Join(base, tail)
+		}
+		cur = parent
+	}
 }
 
 func normalizeTouchedPath(raw, absRoot, absCwd string) string {

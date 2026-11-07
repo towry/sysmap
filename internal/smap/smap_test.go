@@ -1247,18 +1247,23 @@ func TestCheckRefsFallsBackToTheMapDirectoryWithoutGit(t *testing.T) {
 }
 
 func TestCheckRefsAllowsMissingFilesOnPlannedNewNodesAndValidatesContainment(t *testing.T) {
+	outside := t.TempDir()
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeMapFile(t, dir, "app/existing.go", "one\ntwo\n")
+	linkRef := ""
+	if err := os.Symlink(outside, filepath.Join(dir, "app", "outlink")); err == nil {
+		linkRef = "  @ app/outlink/planned.go\n"
+	}
 	root := writeMapFile(t, dir, "maps/root.smap", `system "PlannedRefs"
 + biz gate "Gate"
   @ app/new_gate.go
   @ app/existing.go:2
   @ app/existing.go:5
   @ ../../outside.go
-~ biz edited "Edited"
+`+linkRef+`~ biz edited "Edited"
   @ app/missing_on_tilde.go
 `)
 	_, m, _, err := Load(root)
@@ -1266,13 +1271,22 @@ func TestCheckRefsAllowsMissingFilesOnPlannedNewNodesAndValidatesContainment(t *
 		t.Fatal(err)
 	}
 	refDiags := m.CheckRefs()
-	if len(refDiags) != 3 {
-		t.Fatalf("CheckRefs = %+v, want 3 errors (existing:5, outside, missing_on_tilde)", refDiags)
+	wantCount := 3
+	if linkRef != "" {
+		wantCount = 4
+	}
+	if len(refDiags) != wantCount {
+		t.Fatalf("CheckRefs = %+v, want %d errors", refDiags, wantCount)
 	}
 	wantLines := map[int]string{
 		5: "app/existing.go has only 2 lines",
 		6: "must be relative to the repository root and inside",
-		8: "app/missing_on_tilde.go does not exist",
+	}
+	if linkRef != "" {
+		wantLines[7] = "must be relative to the repository root and inside"
+		wantLines[9] = "app/missing_on_tilde.go does not exist"
+	} else {
+		wantLines[8] = "app/missing_on_tilde.go does not exist"
 	}
 	for line, substr := range wantLines {
 		found := false
