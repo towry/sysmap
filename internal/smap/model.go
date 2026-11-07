@@ -1,7 +1,10 @@
 // Package smap parses the sysmap text language and answers questions about it.
 package smap
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 type Kind string
 
@@ -180,19 +183,37 @@ func (m *Model) Dependents(id string) []string {
 // [checkout payment ledger] means checkout depends on payment, which depends on ledger.
 // When an edge reaches a node through one of its ancestor containers (for example web -> orders
 // reaching ~ checkout inside orders), that container sits in the chain between the caller and
-// the child ([web orders checkout]). A new (+) node only takes edges into its own subtree and
-// stops at callers already marked + or ~, which track their own dependents.
+// the child ([web orders checkout]). When an async write edge (writer ~> core_store) feeds a
+// shared store that downstream readers depend on (reader -> core_store), the store sits in the
+// chain as via ([reader core_store writer]). A new (+) node only takes edges into its own
+// subtree and stops at callers already marked + or ~, which track their own dependents.
 func (m *Model) DependentPaths(id string) map[string][]string {
 	type hop struct {
 		to, via string
 	}
 	isNew := m.Nodes[id] != nil && m.Nodes[id].Mark == "+"
-	next := map[string]hop{} // dependent -> the node (and optional container) it was reached through
+	next := map[string]hop{} // dependent -> the node (and optional container/store) it was reached through
 	queue := []string{id}
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
 		for _, e := range m.Edges {
+			if m.InSubtree(e.From, cur) && e.Async && !(isNew && cur == id) && !m.InSubtree(e.To, cur) && !m.InSubtree(e.To, id) {
+				if store := m.Nodes[e.To]; store != nil && store.Kind == Core {
+					for _, re := range m.Edges {
+						if re.Async || !m.InSubtree(re.To, store.ID) || m.InSubtree(re.From, store.ID) || m.InSubtree(re.From, cur) || m.InSubtree(re.From, id) {
+							continue
+						}
+						if isNew && m.Nodes[re.From] != nil && m.Nodes[re.From].Mark != "" {
+							continue
+						}
+						if _, seen := next[re.From]; !seen {
+							next[re.From] = hop{to: cur, via: store.ID}
+							queue = append(queue, re.From)
+						}
+					}
+				}
+			}
 			if m.InSubtree(e.From, cur) || m.InSubtree(e.From, id) || m.InSubtree(e.From, e.To) {
 				continue
 			}
@@ -230,6 +251,196 @@ func (m *Model) DependentPaths(id string) map[string][]string {
 		paths[d] = chain
 	}
 	return paths
+}
+
+// StoreBranch describes one fed shared store and the upstream write chain that populates it.
+type StoreBranch struct {
+	Store   string   `json:"store"`
+	Writers []string `json:"writers"`
+	Chain   []string `json:"chain"`
+	Scope   string   `json:"scope,omitempty"`
+}
+
+// StoreJoin describes a consumer node that reads two or more independently fed shared stores.
+type StoreJoin struct {
+	Consumer string        `json:"consumer"`
+	Join     string        `json:"join,omitempty"`
+	Stores   []StoreBranch `json:"stores"`
+}
+
+// DetailValue returns the trimmed text after the first detail line starting with prefix
+// (such as "scope:" or "join:"), or "" when none is present.
+func DetailValue(n *Node, prefix string) string {
+	if n == nil {
+		return ""
+	}
+	for _, d := range n.Detail {
+		if strings.HasPrefix(d, prefix) {
+			if v := strings.TrimSpace(d[len(prefix):]); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+// StoreWriters returns the sorted external nodes that asynchronously write (~>) into id's subtree.
+func (m *Model) StoreWriters(id string) []string {
+	n := m.Nodes[id]
+	if n == nil || n.Kind != Core {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, e := range m.Edges {
+		if e.Async && m.InSubtree(e.To, id) && !m.InSubtree(e.From, id) {
+			seen[e.From] = true
+		}
+	}
+	return sortedKeys(seen)
+}
+
+// WriteChain traces the deepest upstream data-production chain ending at storeID
+// (for example [vendor catalog_sync catalog_store bar_pool bar_writer bar_store]).
+func (m *Model) WriteChain(storeID string) []string {
+	writers := m.StoreWriters(storeID)
+	if len(writers) == 0 {
+		return nil
+	}
+	var best []string
+	for _, w := range writers {
+		chain := []string{w, storeID}
+		visited := map[string]bool{storeID: true, w: true}
+		cur := w
+		for step := 0; step < 6; step++ {
+			next := m.upstreamProducer(cur, visited)
+			if next == "" {
+				break
+			}
+			visited[next] = true
+			chain = append([]string{next}, chain...)
+			if m.Nodes[next] != nil && m.Nodes[next].Kind == Ext {
+				break
+			}
+			cur = next
+		}
+		if len(chain) > len(best) {
+			best = chain
+		}
+	}
+	return best
+}
+
+func (m *Model) upstreamProducer(id string, visited map[string]bool) string {
+	// 1. Prefer another fed core store that id reads synchronously (e.g. bar_pool -> catalog_store).
+	for _, e := range m.Edges {
+		if !e.Async && e.From == id && !visited[e.To] && len(m.StoreWriters(e.To)) > 0 {
+			return e.To
+		}
+	}
+	// 2. If id is a fed core store, step to its first unvisited async writer (e.g. catalog_sync ~> catalog_store).
+	for _, w := range m.StoreWriters(id) {
+		if !visited[w] {
+			return w
+		}
+	}
+	// 3. Prefer a biz node that feeds or is called by id (e.g. bar_pool -> bar_writer)
+	// when that biz node itself reads a fed core store.
+	for _, e := range m.Edges {
+		cand := ""
+		if e.To == id && !visited[e.From] {
+			cand = e.From
+		} else if !e.Async && e.From == id && !visited[e.To] {
+			cand = e.To
+		}
+		if cand != "" && m.Nodes[cand] != nil && m.Nodes[cand].Kind == Biz {
+			for _, re := range m.Edges {
+				if !re.Async && re.From == cand && len(m.StoreWriters(re.To)) > 0 {
+					return cand
+				}
+			}
+		}
+	}
+	// 4. Otherwise step to an external data source that id pulls from (e.g. writer -> vendor).
+	for _, e := range m.Edges {
+		if !e.Async && e.From == id && !visited[e.To] && m.Nodes[e.To] != nil && m.Nodes[e.To].Kind == Ext {
+			return e.To
+		}
+	}
+	return ""
+}
+
+// NodeStoreJoin returns the StoreJoin for consumer id when id synchronously reads two or more
+// independently fed shared (core) stores that have no direct edge between them.
+func (m *Model) NodeStoreJoin(id string) *StoreJoin {
+	n := m.Nodes[id]
+	if n == nil {
+		return nil
+	}
+	seenStore := map[string]bool{}
+	var stores []string
+	for _, e := range m.Edges {
+		if e.Async || e.From != id || seenStore[e.To] {
+			continue
+		}
+		writers := m.StoreWriters(e.To)
+		if len(writers) == 0 {
+			continue
+		}
+		// Skip a store if id is itself one of its writers or sits on its upstream write chain.
+		isFeeder := false
+		for _, w := range writers {
+			if w == id {
+				isFeeder = true
+				break
+			}
+		}
+		for _, c := range m.WriteChain(e.To) {
+			if c == id {
+				isFeeder = true
+				break
+			}
+		}
+		if isFeeder {
+			continue
+		}
+		seenStore[e.To] = true
+		stores = append(stores, e.To)
+	}
+	if len(stores) < 2 {
+		return nil
+	}
+	// Check that at least two stores have distinct writer sets and no direct edge between them.
+	independent := false
+	for i := 0; i < len(stores) && !independent; i++ {
+		for j := i + 1; j < len(stores); j++ {
+			a, b := stores[i], stores[j]
+			if strings.Join(m.StoreWriters(a), ",") == strings.Join(m.StoreWriters(b), ",") {
+				continue
+			}
+			if m.hasDependency(a, b) || m.hasDependency(b, a) {
+				continue
+			}
+			independent = true
+			break
+		}
+	}
+	if !independent {
+		return nil
+	}
+	var branches []StoreBranch
+	for _, s := range stores {
+		branches = append(branches, StoreBranch{
+			Store:   s,
+			Writers: m.StoreWriters(s),
+			Chain:   m.WriteChain(s),
+			Scope:   DetailValue(m.Nodes[s], "scope:"),
+		})
+	}
+	return &StoreJoin{
+		Consumer: id,
+		Join:     DetailValue(n, "join:"),
+		Stores:   branches,
+	}
 }
 
 func sortedKeys(set map[string]bool) []string {

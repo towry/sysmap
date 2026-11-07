@@ -328,8 +328,8 @@ function setData(data) {
     else if (state.diagramIndex >= dn.diagrams.length) state.diagramIndex = 0;
   }
 }
-const special = () => state.impact || state.hood; // a cross-level view is on: it ignores the current level
-const viewKey = () => state.impact ? "i:" + state.impact : state.hood ? "h:" + state.hood + ":" + state.hops : "";
+const special = () => state.impact || state.hood || state.flow; // a cross-level view is on: it ignores the current level
+const viewKey = () => state.impact ? "i:" + state.impact : state.hood ? "h:" + state.hood + ":" + state.hops : state.flow ? "f:" + state.flow : "";
 const isDiagramRef = (r) => /\.(mmd|mermaid)$/i.test(r);
 const wiredCount = (it) => it.mark === "+" ? it.dependents.filter((d) => it.paths[d] && it.paths[d].length === 2).length : 0;
 const diagramAt = (id, i) => { const n = byId.get(id); return (n && n.diagrams && (n.diagrams[i] || n.diagrams[0])) || null; };
@@ -371,11 +371,14 @@ function impactView() {
     for (const chain of Object.values(it.paths || {})) {
       const pts = chain.filter((x, i) => i + 1 === chain.length || !inSub(chain[i + 1], x));
       for (let i = 0; i + 1 < pts.length; i++) {
-        const a = pts[i], b = pts[i + 1], k = a + "\u0000" + b;
+        const a = pts[i], b = pts[i + 1];
         ids.add(a); ids.add(b);
+        const fwd = D.edges.filter((e) => inSub(e.from, a) && (inSub(e.to, b) || inSub(b, e.to)));
+        const rev = fwd.length ? [] : D.edges.filter((e) => e.async && inSub(e.from, b) && inSub(e.to, a));
+        const real = fwd.length ? fwd : rev;
+        const ea = rev.length ? b : a, eb = rev.length ? a : b, k = ea + "\u0000" + eb;
         if (agg.has(k)) continue;
-        const real = D.edges.filter((e) => inSub(e.from, a) && (inSub(e.to, b) || inSub(b, e.to)));
-        agg.set(k, {a, b, async: real.length > 0 && real.every((e) => e.async), count: Math.max(real.length, 1), labels: real.filter((e) => e.label).map((e) => e.label)});
+        agg.set(k, {a: ea, b: eb, async: real.length > 0 && real.every((e) => e.async), count: Math.max(real.length, 1), labels: real.filter((e) => e.label).map((e) => e.label)});
       }
     }
   }
@@ -383,7 +386,8 @@ function impactView() {
 }
 
 // The neighbourhood view: a node, then everything within `hops` dependency steps of it, in either
-// direction and on any level. A container stands for its whole subtree.
+// direction and on any level. When opened on a multi-store join node, it seeds the upstream write
+// chains of all joined stores so the full fan-out / fan-in diamond appears on one screen.
 function neighbours(x) {
   const out = new Set();
   for (const e of D.edges) {
@@ -395,20 +399,29 @@ function neighbours(x) {
   return [...out];
 }
 function hoodView() {
+  const center = byId.get(state.hood);
   const seen = [state.hood];
-  let frontier = [state.hood];
-  for (let d = 1; d <= state.hops; d++) {
+  if (center && center.storeJoin) {
+    for (const st of center.storeJoin.stores) {
+      for (const id of (st.chain || [])) if (byId.has(id) && !seen.includes(id)) seen.push(id);
+    }
+  }
+  let frontier = seen.slice();
+  const maxHops = center && center.storeJoin ? Math.max(0, state.hops - 2) : state.hops;
+  for (let d = 1; d <= maxHops; d++) {
     // When a container and one of its children are both neighbours only one can be drawn; the more
     // specific node wins, so the order of the edges in the file never changes the picture.
     const found = [...new Set(frontier.flatMap(neighbours))].sort((a, b) => anc(b).length - anc(a).length || (a < b ? -1 : 1));
     const next = [];
     for (const y of found) {
+      const parentIdx = seen.findIndex((s) => s !== state.hood && inSub(y, s) && y !== s);
+      if (parentIdx >= 0) { seen.splice(parentIdx, 1, y); next.push(y); continue; }
       if (seen.some((s) => inSub(y, s) || inSub(s, y))) continue;
       seen.push(y); next.push(y);
     }
     frontier = next;
   }
-  const stand = (id) => seen.find((s) => inSub(id, s)); // the visible node that stands for this one
+  const stand = (id) => seen.find((s) => inSub(id, s)) || seen.find((s) => inSub(s, id)); // the visible node that stands for this one
   const agg = new Map();
   for (const e of D.edges) {
     const a = stand(e.from), b = stand(e.to);
@@ -420,9 +433,31 @@ function hoodView() {
   return {ids: seen, ghost: new Set(), edges: [...agg.values()]};
 }
 
+// The flow view unfolds every step node of the selected flow across containers on one canvas.
+function flowView() {
+  const f = D.flows.find((x) => x.id === state.flow);
+  if (!f) return {ids: [], ghost: new Set(), edges: []};
+  const raw = [...new Set(f.steps.flatMap((s) => [s.from, s.to]).filter((id) => byId.has(id)))];
+  const ids = raw.filter((x) => !raw.some((y) => y !== x && inSub(y, x)));
+  const stand = (id) => ids.find((s) => inSub(id, s)) || ids.find((s) => inSub(s, id));
+  const agg = new Map();
+  for (const s of f.steps) {
+    const a = stand(s.from), b = stand(s.to);
+    if (!a || !b || a === b) continue;
+    const k = a + "\u0000" + b;
+    if (agg.has(k)) { if (s.note) agg.get(k).labels.push(s.note); agg.get(k).count++; continue; }
+    const real = D.edges.filter((e) => (inSub(e.from, a) || inSub(a, e.from)) && (inSub(e.to, b) || inSub(b, e.to)));
+    const async = real.length > 0 && real.every((e) => e.async);
+    const labels = s.note ? [s.note] : real.filter((e) => e.label).map((e) => e.label);
+    agg.set(k, {a, b, async, count: Math.max(real.length, 1), labels});
+  }
+  return {ids, ghost: new Set(), edges: [...agg.values()]};
+}
+
 function buildView() {
   if (state.impact) return impactView();
   if (state.hood) return hoodView();
+  if (state.flow) return flowView();
   const scope = state.scope;
   const real = scope ? byId.get(scope).children.slice() : roots();
   const agg = new Map();
@@ -490,12 +525,13 @@ function pointAt(pts, t) {
 }
 const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w + b.g) - Math.max(a.x, b.x - b.g)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h + b.g) - Math.max(a.y, b.y - b.g)); // b.g: the clear gap b needs around it
 
-function flowEdges() {
+function flowEdges(visIds) {
   const f = D.flows.find((x) => x.id === state.flow);
   const m = new Map();
   if (!f) return m;
+  const stand = (id) => visIds ? (visIds.find((s) => inSub(id, s)) || visIds.find((s) => inSub(s, id))) : lift(id);
   f.steps.forEach((s, i) => {
-    const a = lift(s.from), b = lift(s.to);
+    const a = stand(s.from), b = stand(s.to);
     if (!a || !b || a === b) return;
     const k = a + "\u0000" + b;
     m.set(k, (m.get(k) || []).concat(i + 1));
@@ -559,21 +595,26 @@ function renderMap() {
   const v = buildView();
   // Left-to-right reads best; when that is too wide for the card, stack top-to-bottom instead
   // of shrinking the text, because the card scrolls vertically without losing anything.
-  // A cross-level view puts each top-level area in a box, so a chain that crosses areas reads at a glance.
+  // A cross-level view puts each parent container/area in a box, so a chain that crosses sub-areas reads at a glance.
   let groups = null;
   if (special()) {
-    const g = new Map();
-    for (const id of v.ids) { const a = byId.get(id).area; if (a) g.set(id, a); }
-    if (new Set(g.values()).size >= 2) groups = g;
+    const g = new Map(), vis = new Set(v.ids);
+    for (const id of v.ids) {
+      let p = par(id);
+      while (p && vis.has(p)) p = par(p);
+      const a = p || byId.get(id).area;
+      if (a && !vis.has(a)) g.set(id, a);
+    }
+    if (g.size > 0 && (new Set(g.values()).size >= 2 || g.size < v.ids.length)) groups = g;
   }
   let lay = isNarrow() ? layout(v.ids, v.edges, "TB", groups) : layout(v.ids, v.edges, "LR", groups); // a portrait phone reads top to bottom
-  if (!isNarrow() && lay.width > ($("viewport").clientWidth - 2) / minFit()) {
+  if (!isNarrow() && !special() && lay.width > ($("viewport").clientWidth - 2) / minFit()) {
     const stacked = layout(v.ids, v.edges, "TB", groups);
     if (stacked.width < lay.width) lay = stacked;
   }
   const {pos, points, boxes, width, height} = lay;
   const sel = state.sel ? (special() ? (v.ids.includes(state.sel) ? state.sel : null) : lift(state.sel)) : null;
-  const flowHot = flowEdges();
+  const flowHot = flowEdges(special() ? v.ids : null);
   const hotNodes = new Set();
   for (const k of flowHot.keys()) k.split("\u0000").forEach((x) => hotNodes.add(x));
   const affected = new Set(D.impact.affected), wired = new Set(D.impact.summary.wired);
@@ -584,7 +625,8 @@ function renderMap() {
   // only when the set of cards or their size changed. Otherwise a click would nudge the map.
   const layoutKey = `${viewKey()}|${v.ids.join("|")}|${width}x${height}|${isNarrow()}`;
   if (layoutKey !== lastLayoutKey) { lastLayoutKey = layoutKey; if (viewMode !== "free") applyView(); }
-  $("areas").innerHTML = boxes.map((b) => `<div class="area" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><span>${esc(byId.get(b.id).title)}</span></div>`).join("");
+  const areaTitle = (id) => anc(id).reverse().concat([id]).map((x) => byId.get(x).title).join(" › ");
+  $("areas").innerHTML = boxes.map((b) => `<div class="area" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><span>${esc(areaTitle(b.id))}</span></div>`).join("");
   const svg = $("edges"), pillsSvg = $("pills");
   svg.setAttribute("width", cvs.style.width); svg.setAttribute("height", cvs.style.height);
   pillsSvg.setAttribute("width", cvs.style.width); pillsSvg.setAttribute("height", cvs.style.height);
@@ -593,7 +635,8 @@ function renderMap() {
   // Labels sit on their own line; when two edges meet at one node their midpoints collide,
   // so each label tries other places along the line and takes the first one that is free.
   let pills = ""; // rendered in #pills above #nodes so node cards never obscure labels
-  const taken = v.ids.map((id) => ({x: pos.get(id).x, y: pos.get(id).y, w: W, h: H, g: 8}));
+  const taken = v.ids.map((id) => ({x: pos.get(id).x, y: pos.get(id).y, w: W, h: H, g: 8}))
+    .concat(boxes.map((b) => ({x: b.x, y: b.y, w: Math.min(b.w, textW(areaTitle(b.id)) + 28), h: 28, g: 6})));
   for (const e of v.edges) {
     const pts = points.get(e.a + "\u0000" + e.b);
     const r = route(pts);
@@ -603,7 +646,7 @@ function renderMap() {
     const w = (1.5 + Math.log2(e.count) * 0.8) * (hot ? 1.4 : 1);
     paths += `<path class="edge${hot ? " hot" : ""}" d="${r.d}" stroke-width="${w}" ${e.async ? 'stroke-dasharray="7 5"' : ""} opacity="${faded ? 0.22 : 1}" marker-end="url(#${hot ? "arh" : "ar"})"/>`;
     let text = "";
-    if (steps) text = steps.join(",");
+    if (steps) text = (e.labels[0] ? steps.join(",") + ": " + e.labels[0] : steps.join(","));
     else if (hot) text = e.count > 1 ? e.count + " 条依赖" : (e.labels[0] || "");
     else if (e.count > 1 && !sel && !state.flow) text = String(e.count);
     if (text) {
@@ -611,9 +654,9 @@ function renderMap() {
       let at = r.mid, fewest = Infinity;
       // Along the line first; when the line is shorter than the labels, step just above or below it.
       for (const [t, dy] of [
-        [0.5, 0], [0.4, 0], [0.6, 0], [0.3, 0], [0.7, 0],
+        [0.5, 0], [0.4, 0], [0.6, 0], [0.3, 0], [0.7, 0], [0.22, 0], [0.78, 0],
         [0.5, 24], [0.5, -24], [0.4, 24], [0.4, -24], [0.6, 24], [0.6, -24],
-        [0.5, 48], [0.5, -48]
+        [0.3, -24], [0.7, 24], [0.5, 48], [0.5, -48]
       ]) {
         const m = pointAt(pts, t), c = {x: m.x, y: m.y + dy}, box = {x: c.x - pw / 2, y: c.y - 10, w: pw, h: 20};
         const n = taken.reduce((s, b) => s + overlap(box, b), 0);
@@ -677,14 +720,26 @@ function renderPageHead() {
     return;
   }
   if (state.hood) {
-    $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>邻域视图</b>`;
-    const hTitle = `「${byId.get(state.hood).title}」周围 ${state.hops} 步`;
+    const center = byId.get(state.hood);
+    $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>${center && center.storeJoin ? "多源汇合链路视图" : "邻域视图"}</b>`;
+    const hTitle = center && center.storeJoin ? `「${center.title}」的多源数据写入与汇合链路` : `「${center.title}」周围 ${state.hops} 步`;
     $("scopeTitle").textContent = hTitle;
     $("scopeTitle").title = hTitle;
-    $("lead").textContent = "不分层级;线从依赖方指向被依赖方,框是所在区域";
+    $("lead").textContent = "跨层级展开;实线(->)为同步调用/读取,虚线(~>)为异步写入,外框为所属子系统容器";
     $("lead").title = $("lead").textContent;
     $("lead").hidden = isNarrow(); // no room for it beside the title on a phone
     $("stats").textContent = `${buildView().ids.length} 个节点`;
+    return;
+  }
+  if (state.flow) {
+    const f = D.flows.find((x) => x.id === state.flow);
+    $("crumbs").innerHTML = `<a tabindex="0" data-scope="">${esc(D.title || "系统")}</a><span class="sep">${ic("chev")}</span><b>流程视图</b>`;
+    $("scopeTitle").textContent = f.title;
+    $("scopeTitle").title = f.title;
+    $("lead").textContent = f.desc || "跨层级展开流程涉及的全部节点;虚线(~>)为异步写入,实线(->)为同步调用/读取";
+    $("lead").title = $("lead").textContent;
+    $("lead").hidden = isNarrow();
+    $("stats").textContent = `${f.steps.length} 个步骤 · ${buildView().ids.length} 个节点`;
     return;
   }
   if (state.impact) {
@@ -877,8 +932,9 @@ function pathTree(it) {
   if (!kids.size) return "";
   const draw = (id, depth) => [...(kids.get(id) || [])].sort().map((c) => {
     const n = byId.get(c), isBox = inSub(id, c);
-    const tag = isBox ? '<span class="lab">通过上级区域 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
-    const hint = isBox ? ' <span class="lab">关联到：</span>' : n.mark ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
+    const isStore = !isBox && D.edges.some((e) => e.async && inSub(e.from, id) && inSub(e.to, c));
+    const tag = isBox ? '<span class="lab">通过上级区域 · </span>' : isStore ? '<span class="lab">经共享存储 · </span>' : n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "新" : "改"}</span> ` : "";
+    const hint = (isBox || isStore) ? ' <span class="lab">关联到：</span>' : n.mark ? "" : depth === 0 ? ` <span class="lab">${it.mark === "+" ? "直接调用 · 要一起改" : "直接依赖 · 需检查"}</span>` : ' <span class="lab">需检查</span>';
     return `<div class="lv"><div class="row">${tag}<a tabindex="0" data-go="${esc(c)}">${esc(n.title)}</a>${hint}</div>${draw(c, depth + 1)}</div>`;
   }).join("");
   return `<div class="ptree"><div class="row root">${esc(byId.get(it.id).title)} <span class="lab">${it.mark === "+" ? "新增" : "修改"}</span></div>${draw(it.id, 0)}</div>`;
@@ -907,20 +963,41 @@ function impactBox(only) {
   return `<h3>计划改动的影响</h3><div class="verdict ${im.level}"><b>${LEVEL[im.level] || ""}</b>${verdictText(im)}</div><ul>${rows}</ul>`;
 }
 
+const shortLink = (id) => `<a tabindex="0" data-go="${esc(id)}">${nameWithId(id)}</a>`;
+function joinBox(n) {
+  const sj = n && n.storeJoin;
+  if (!sj) return "";
+  const joinRule = sj.join ? `<div class="lab"><b>本节点汇合规则 (join):</b> ${esc(sj.join)}</div>` : `<div class="lab" style="color:var(--chg)"><b>缺少 | join: 声明</b> — 请核对下方各存储的范围与同步周期是否一致</div>`;
+  const rows = sj.stores.map((st) => {
+    const ch = st.chain || [];
+    const chain = ch.map((id, i) => {
+      if (i === 0) return shortLink(id);
+      const prev = ch[i - 1];
+      const async = D.edges.some((e) => e.async && inSub(e.from, prev) && inSub(e.to, id));
+      return ` <span class="lab">${async ? "~>" : "→"}</span> ` + shortLink(id);
+    }).join("");
+    const scope = st.scope ? `<div class="lab"><b>范围与口径 (scope):</b> ${esc(st.scope)}</div>` : `<div class="lab" style="color:var(--chg)"><b>缺少 | scope: 声明</b></div>`;
+    return `<li><b>${shortLink(st.store)}</b>${scope}<div class="lab">写入链路: ${chain}</div></li>`;
+  }).join("");
+  return `<div class="why"><b>多源数据汇合核对 (${sj.stores.length} 份独立写入存储)</b>${joinRule}<ul>${rows}</ul><p><button class="btn" data-hood="${esc(n.id)}">在画布上展开多源汇合链路</button></p></div>`;
+}
+
 function renderDetail() {
   const el = $("detail");
   const n = byId.get(state.sel);
   if (state.flow && !n) {
     const f = D.flows.find((x) => x.id === state.flow);
-    el.innerHTML = `<h2>${esc(f.title)}</h2><div class="id">flow ${esc(f.id)}</div>${f.desc ? `<p>${esc(f.desc)}</p>` : ""}<h3>步骤 <span>${f.steps.length}</span></h3>${f.steps.map((s, i) => { const inner = lift(s.from) === lift(s.to) ? ' <span class="lab">(节点内部)</span>' : ""; return `<div class="step" tabindex="0" data-go="${esc(s.to)}"><b>${i + 1}</b><div>${esc(byId.get(s.from).title)} → ${esc(byId.get(s.to).title)}${inner}<div class="lab">${esc(s.note)}</div></div></div>`; }).join("")}<p><button class="btn" id="clearFlow">取消流程高亮</button></p>`;
+    el.innerHTML = `<h2>${esc(f.title)}</h2><div class="id">flow ${esc(f.id)}</div>${f.desc ? `<p>${esc(f.desc)}</p>` : ""}<h3>步骤 <span>${f.steps.length}</span></h3>${f.steps.map((s, i) => `<div class="step" tabindex="0" data-go="${esc(s.to)}"><b>${i + 1}</b><div>${esc(byId.get(s.from).title)} → ${esc(byId.get(s.to).title)}<div class="lab">${esc(s.note)}</div></div></div>`).join("")}<p><button class="btn" id="clearFlow">退出流程视图</button></p>`;
     return;
   }
   if (!n) {
     const c = {core: 0, biz: 0, ext: 0}; D.nodes.forEach((x) => c[x.kind]++);
     const hubs = D.nodes.filter((x) => x.kind === "core" && x.fanin).sort((a, b) => b.fanin - a.fanin).slice(0, 5);
+    const joins = D.nodes.filter((x) => x.storeJoin);
+    const joinSummary = joins.length ? `<h3>多源数据汇合点 <span>${joins.length}</span></h3><ul>${joins.map((j) => `<li>${shortLink(j.id)} <div class="lab">汇合 ${j.storeJoin.stores.map((s) => nameWithId(s.store)).join("、")}</div><button class="btn" data-hood="${esc(j.id)}">在画布上看汇合链路</button></li>`).join("")}</ul>` : "";
     const versions = (D.fileVersions || []).map((f) => `<li><code>${esc(f.file || "当前文件")}</code><div class="lab">格式: ${esc(f.format || "未声明")} · 维护版本: ${esc(f.reviewed || "未知")}</div><div class="lab">${esc(f.advice)}</div></li>`).join("");
     const stale = connectionLost ? `<p class="lab">无法读取当前文件，以下版本信息来自上一个可用快照。</p>` : D.diags.some((d) => d.level === "error") ? `<p class="lab">文件存在错误，以下版本信息来自上一个可用快照，不代表当前文件状态。</p>` : "";
-    el.innerHTML = `<h2>总览</h2><p class="lab">${c.core} 个通用节点,${c.biz} 个业务节点,${c.ext} 个外部系统。</p><h3>版本与维护</h3><p class="lab">Sysmap ${esc(D.programVersion || "未知")} · ${stale ? "上一个可用快照" : document.body.dataset.live ? "实时文件状态" : "离线生成时的状态"}</p>${stale}<ul>${versions}</ul>${impactBox()}${hubs.length ? `<h3>被依赖最多的通用节点</h3><ul>${hubs.map((h) => `<li>${link(h.id)} <span class="lab">被 ${h.fanin} 个依赖</span></li>`).join("")}</ul>` : ""}<p class="lab">单击图里的节点看详情,双击进入下一层,Esc 返回上一层。拖动空白处平移,双指捏合或按住 Ctrl/⌘ 滚动缩放,+ - 0 键缩放。</p>`;
+    el.innerHTML = `<h2>总览</h2><p class="lab">${c.core} 个通用节点,${c.biz} 个业务节点,${c.ext} 个外部系统。</p>${impactBox()}${joinSummary}${hubs.length ? `<h3>被依赖最多的通用节点</h3><ul>${hubs.map((h) => `<li>${link(h.id)} <span class="lab">被 ${h.fanin} 个依赖</span></li>`).join("")}</ul>` : ""}<h3>版本与维护</h3><p class="lab">Sysmap ${esc(D.programVersion || "未知")} · ${stale ? "上一个可用快照" : document.body.dataset.live ? "实时文件状态" : "离线生成时的状态"}</p>${stale}<ul>${versions}</ul><p class="lab">单击图里的节点看详情,双击进入下一层,Esc 返回上一层。拖动空白处平移,双指捏合或按住 Ctrl/⌘ 滚动缩放,+ - 0 键缩放。</p>`;
     return;
   }
   const out = new Map(), inn = new Map();
@@ -934,7 +1011,7 @@ function renderDetail() {
   const path = anc(n.id).reverse();
   const diagrams = n.diagrams || [];
   const refs = n.refs.filter((r) => !isDiagramRef(r));
-  el.innerHTML = `<div class="kindline ${n.kind}">${KIND[n.kind]}${n.kind === "core" ? "边界" : n.kind === "biz" ? "节点" : "系统"} ${n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "计划新增" : "计划修改"}</span>` : ""}</div><h2>${esc(n.title)}</h2><div class="id">${esc(n.id)}${path.length ? " · 位于 " + path.map((p) => esc(byId.get(p).title)).join(" › ") : ""}</div>${n.desc ? `<p>${esc(n.desc)}</p>` : ""}__TASK_DETAIL__${neighbours(n.id).length ? `<p><button class="btn" data-hood="${esc(n.id)}">看周围的相关节点</button></p>` : ""}${whyBox(n.id)}${item ? impactBox(item) : ""}${diagrams.length ? `<h3>架构图 <span>${diagrams.length}</span></h3>${diagrams.map((d, i) => `<div class="diagram-card"><div class="diagram-head"><code title="${esc(d.path)}">${esc(d.path).replace(/\//g, "/<wbr>")}</code></div><div class="diagram-preview pele-theme" data-preview="${i}"></div><div class="diagram-foot"><button class="btn" data-diagram="${esc(n.id)}" data-index="${i}">在画布中查看</button></div></div>`).join("")}` : ""}${n.detail.length ? `<h3>详细说明</h3><div class="detail">${esc(n.detail.join("\n"))}</div>` : ""}${refs.length ? `<h3>代码位置</h3><ul>${refs.map((r) => `<li><code>${esc(r)}</code></li>`).join("")}</ul>` : ""}${n.children.length ? `<h3>包含的子节点 <span>${n.children.length}</span></h3><ul>${n.children.map((c) => `<li>${link(c)} <span class="lab">${KIND[byId.get(c).kind]}</span></li>`).join("")}</ul><p><button class="btn" data-enter="${esc(n.id)}">${ic("in")} 进入这一层</button></p>` : ""}${out.size ? `<h3>依赖 <span>${out.size}</span></h3><ul>${lst(out)}</ul>` : ""}${inn.size ? `<h3>被依赖 <span>${inn.size}</span></h3><ul>${lst(inn)}</ul>` : ""}${flows.length ? `<h3>参与的流程</h3><ul>${flows.map((f) => `<li><a tabindex="0" data-flow="${esc(f.id)}">${esc(f.title)}</a></li>`).join("")}</ul>` : ""}`;
+  el.innerHTML = `<div class="kindline ${n.kind}">${KIND[n.kind]}${n.kind === "core" ? "边界" : n.kind === "biz" ? "节点" : "系统"} ${n.mark ? `<span class="tag ${n.mark === "+" ? "new" : "chg"}">${n.mark === "+" ? "计划新增" : "计划修改"}</span>` : ""}</div><h2>${esc(n.title)}</h2><div class="id">${esc(n.id)}${path.length ? " · 位于 " + path.map((p) => esc(byId.get(p).title)).join(" › ") : ""}</div>${n.desc ? `<p>${esc(n.desc)}</p>` : ""}__TASK_DETAIL__${!n.storeJoin && neighbours(n.id).length ? `<p><button class="btn" data-hood="${esc(n.id)}">看周围的相关节点</button></p>` : ""}${joinBox(n)}${whyBox(n.id)}${item ? impactBox(item) : ""}${diagrams.length ? `<h3>架构图 <span>${diagrams.length}</span></h3>${diagrams.map((d, i) => `<div class="diagram-card"><div class="diagram-head"><code title="${esc(d.path)}">${esc(d.path).replace(/\//g, "/<wbr>")}</code></div><div class="diagram-preview pele-theme" data-preview="${i}"></div><div class="diagram-foot"><button class="btn" data-diagram="${esc(n.id)}" data-index="${i}">在画布中查看</button></div></div>`).join("")}` : ""}${n.detail.length ? `<h3>详细说明</h3><div class="detail">${esc(n.detail.join("\n"))}</div>` : ""}${refs.length ? `<h3>代码位置</h3><ul>${refs.map((r) => `<li><code>${esc(r)}</code></li>`).join("")}</ul>` : ""}${n.children.length ? `<h3>包含的子节点 <span>${n.children.length}</span></h3><ul>${n.children.map((c) => `<li>${link(c)} <span class="lab">${KIND[byId.get(c).kind]}</span></li>`).join("")}</ul><p><button class="btn" data-enter="${esc(n.id)}">${ic("in")} 进入这一层</button></p>` : ""}${out.size ? `<h3>依赖 <span>${out.size}</span></h3><ul>${lst(out)}</ul>` : ""}${inn.size ? `<h3>被依赖 <span>${inn.size}</span></h3><ul>${lst(inn)}</ul>` : ""}${flows.length ? `<h3>参与的流程</h3><ul>${flows.map((f) => `<li><a tabindex="0" data-flow="${esc(f.id)}">${esc(f.title)}</a></li>`).join("")}</ul>` : ""}`;
   // The panel is narrow, so the card is a thumbnail; the canvas view renders it at full size.
   el.querySelectorAll("[data-preview]").forEach((box) => {
     const d = diagrams[Number(box.dataset.preview)];
@@ -964,7 +1041,7 @@ function renderChrome() {
 
 // Moving to another level or flow is a step in the browser history, so Back and Forward work
 // (and so do the buttons next to the title). Selecting a node only replaces the current step.
-let shownScope = "", shownKey = "", shownFlow = "", navIndex = 0, navMax = 0, fromHistory = false;
+let shownScope = "", shownKey = "", shownFlow = "", shownSel = "", navIndex = 0, navMax = 0, fromHistory = false;
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 let firstRender = true, pendingRender = 0, pendingFromHistory = false, enterAnim = null;
 // Is a strictly inside b? The empty scope is the root, which contains everything else.
@@ -982,16 +1059,19 @@ function renderAll() {
 }
 function renderNow() {
   const moved = state.scope !== shownScope || state.flow !== shownFlow || viewKey() !== shownKey;
+  const selChanged = state.sel !== shownSel;
   if (state.scope !== shownScope || viewKey() !== shownKey) {
     if (!firstRender && !calm.matches) enterAnim = {from: viewKey() !== shownKey ? 1 : within(state.scope, shownScope) ? 0.93 : within(shownScope, state.scope) ? 1.05 : 1};
     shownScope = state.scope; shownKey = viewKey(); viewMode = state.diagram ? "fit" : special() ? "overview" : "auto"; // a zoom chosen for one level does not follow you into another
   }
   firstRender = false;
   shownFlow = state.flow;
+  shownSel = state.sel;
   // Everything is redrawn, so remember which row or node had the keyboard focus.
   const held = document.activeElement.closest && document.activeElement.closest(".node, .orow, .frow");
   const keep = held && {cls: [...held.classList].find((c) => ["node", "orow", "frow"].includes(c)), attr: held.dataset.id ? "id" : "flow", val: held.dataset.id || held.dataset.flow};
   renderChrome(); renderPageHead(); renderMap(); renderSide(); renderDetail(); syncHash(moved && !fromHistory);
+  if (moved || selChanged) $("detail").scrollTop = 0;
   $("back").disabled = navIndex <= 0; $("fwd").disabled = navIndex >= navMax;
   if (keep && document.activeElement === document.body) {
     const el = document.querySelector(`.${keep.cls}[data-${keep.attr}="${CSS.escape(keep.val)}"]`);
@@ -1037,24 +1117,14 @@ function reveal(id) {
   closeMenu();
   leaveDiagram();
   if (special() && buildView().ids.includes(id)) { state.sel = id; return; } // already on the canvas: just select it
-  state.impact = ""; state.hood = "";
+  state.impact = ""; state.hood = ""; state.flow = "";
   state.scope = par(id); state.sel = id; viewMode = "auto"; anc(id).forEach((a) => open.add(a));
 } // jumping to a node shows the whole level, so the node is never off screen
-function enter(id) { leaveDiagram(); state.impact = ""; state.hood = ""; state.scope = id; state.sel = ""; open.add(id); anc(id).forEach((a) => open.add(a)); }
-function lca(ids) {
-  const paths = ids.map((i) => anc(i).reverse());
-  let out = "";
-  for (let k = 0; paths.every((p) => p[k] && p[k] === paths[0][k]); k++) out = paths[0][k];
-  return out;
-}
+function enter(id) { leaveDiagram(); state.impact = ""; state.hood = ""; state.flow = ""; state.scope = id; state.sel = ""; open.add(id); anc(id).forEach((a) => open.add(a)); }
 function pickFlow(id) {
   closeMenu();
   leaveDiagram();
   state.flow = state.flow === id ? "" : id; state.sel = ""; state.impact = ""; state.hood = "";
-  const f = D.flows.find((x) => x.id === state.flow);
-  if (f && f.steps.length) {
-    state.scope = lca(f.steps.flatMap((s) => [s.from, s.to]));
-  }
   renderAll();
 }
 
@@ -1087,7 +1157,7 @@ document.addEventListener("click", (ev) => {
   if (hd) { leaveDiagram(); state.hood = hd.dataset.hood; state.impact = ""; state.flow = ""; state.sel = state.hood; renderAll(); return; }
   const hp = t.closest("[data-hops]");
   if (hp) { state.hops = Number(hp.dataset.hops); renderAll(); return; }
-  if (t.closest("#impactOff")) { leaveDiagram(); state.impact = ""; state.hood = ""; renderAll(); return; }
+  if (t.closest("#impactOff")) { leaveDiagram(); state.impact = ""; state.hood = ""; state.flow = ""; renderAll(); return; }
   const dg = t.closest("[data-diagram]");
   if (dg) {
     state.diagram = dg.dataset.diagram; state.diagramIndex = Number(dg.dataset.index) || 0;
@@ -1121,7 +1191,7 @@ document.addEventListener("click", (ev) => {
   const go = t.closest("[data-go]");
   if (go) { reveal(go.dataset.go); renderAll(); return; }
   const sc = t.closest("[data-scope]");
-  if (sc) { leaveDiagram(); state.scope = sc.dataset.scope; state.sel = ""; state.impact = ""; state.hood = ""; renderAll(); return; }
+  if (sc) { leaveDiagram(); state.scope = sc.dataset.scope; state.sel = ""; state.impact = ""; state.hood = ""; state.flow = ""; renderAll(); return; }
   const en = t.closest("[data-enter]");
   if (en) { enter(en.dataset.enter); renderAll(); return; }
   const fl = t.closest("[data-flow]");
@@ -1147,8 +1217,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") {
     if ($("searchBox").contains(document.activeElement)) { setSearchOpen(false); }
     else if (state.diagram) { leaveDiagram(); renderAll(); }
-    else if (special()) { state.impact = ""; state.hood = ""; renderAll(); }
-    else if (state.flow) { state.flow = ""; renderAll(); }
+    else if (special()) { state.impact = ""; state.hood = ""; state.flow = ""; renderAll(); }
     else if (state.scope) { state.scope = par(state.scope); state.sel = ""; renderAll(); }
     return;
   }

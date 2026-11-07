@@ -1389,6 +1389,89 @@ biz invoice "Invoice"
 	}
 }
 
+func TestStoreJoinsWarnUntilScopeAndJoinAreDeclaredAndBridgeImpact(t *testing.T) {
+	unconfirmed := `system "Market"
+ext vendor "Vendor"
+~ biz batch_writer "Batch Writer"
+core batch_store "Batch Store"
+biz catalog_sync "Catalog Sync"
+core catalog_store "Catalog Store"
+biz bar_pool "Bar Pool"
+biz bar_writer "Bar Writer"
+core bar_store "Bar Store"
+core input_loader "Input Loader"
+
+batch_writer -> vendor : daily
+batch_writer ~> batch_store : append
+catalog_sync -> vendor : weekly
+catalog_sync ~> catalog_store : sync
+bar_pool -> catalog_store : filter
+bar_pool -> bar_writer : feed
+bar_writer -> vendor : bars
+bar_writer ~> bar_store : write
+input_loader -> batch_store : universe
+input_loader -> bar_store : bars
+`
+	m, parseDiags := Parse(unconfirmed)
+	if HasErrors(parseDiags) {
+		t.Fatalf("parse errors: %v", parseDiags)
+	}
+	diags := m.Check()
+	joinWarn := diagWith(diags, `joins multiple fed stores`)
+	if joinWarn == nil || joinWarn.Level != "warn" {
+		t.Fatalf("expected multi-store join warning, got %+v", diags)
+	}
+	for _, want := range []string{
+		`batch_store (vendor -> batch_writer -> batch_store)`,
+		`bar_store (vendor -> catalog_sync -> catalog_store -> bar_pool -> bar_writer -> bar_store)`,
+		`"| scope: <coverage, schedule, basis>" on "batch_store"`,
+		`"| join: <key and mismatch rule>" on "input_loader"`,
+	} {
+		if !strings.Contains(joinWarn.Msg, want) {
+			t.Errorf("join warning %q lacks %q", joinWarn.Msg, want)
+		}
+	}
+
+	// Impact on ~ batch_writer bridges through ~> batch_store to reach input_loader as inspect.
+	imp := m.Impact()
+	if !strings.Contains(strings.Join(imp.Summary.Inspect, ","), "input_loader") {
+		t.Fatalf("impact on ~ batch_writer did not bridge through batch_store to input_loader: %+v", imp.Summary)
+	}
+	if got := strings.Join(imp.Items[0].Paths["input_loader"], ">"); got != "input_loader>batch_store>batch_writer" {
+		t.Fatalf("bridged path = %q, want input_loader>batch_store>batch_writer", got)
+	}
+
+	// Adding | scope: on each joined store and | join: on the consumer clears the warning while keeping Show output.
+	confirmed := strings.Replace(unconfirmed, "core batch_store \"Batch Store\"\n", "core batch_store \"Batch Store\"\n  | scope: all active items · daily 16:10 · raw\n", 1)
+	confirmed = strings.Replace(confirmed, "core bar_store \"Bar Store\"\n", "core bar_store \"Bar Store\"\n  | scope: catalog filtered items · intraday · adjusted\n", 1)
+	confirmed = strings.Replace(confirmed, "core input_loader \"Input Loader\"\n", "core input_loader \"Input Loader\"\n  | join: symbol+date exact match (mismatch raises data_missing)\n", 1)
+	m2 := mustParse(t, confirmed)
+	if d := diagWith(m2.Check(), `joins multiple fed stores`); d != nil {
+		t.Fatalf("expected no join warning once scope: and join: are declared, got %+v", d)
+	}
+	show, err := m2.Show("input_loader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"joins stores:",
+		"batch_store : vendor -> batch_writer -> batch_store",
+		"scope: all active items · daily 16:10 · raw",
+		"bar_store : vendor -> catalog_sync -> catalog_store -> bar_pool -> bar_writer -> bar_store",
+		"scope: catalog filtered items · intraday · adjusted",
+		"join: symbol+date exact match (mismatch raises data_missing)",
+	} {
+		if !strings.Contains(show, want) {
+			t.Errorf("Show(input_loader) lacks %q:\n%s", want, show)
+		}
+	}
+	// A root flow may step directly into a mounted file's child node once composed.
+	dir := t.TempDir()
+	writeMapFile(t, dir, "sub.smap", "biz child \"Child\"\next caller \"Caller\"\ncaller -> child : run\n")
+	root := writeMapFile(t, dir, "root.smap", "core area \"Area\"\n  mount sub.smap\n  bind caller = web\nbiz web \"Web\"\nflow cross \"Cross\"\n  web -> area.child : step\n")
+	_ = loadClean(t, root)
+}
+
 // --- containment and dependency-cycle warnings ---
 
 func cycleWarnings(diags []Diag) []Diag {

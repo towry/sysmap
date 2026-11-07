@@ -13,9 +13,10 @@ import (
 )
 
 // Check validates references and applies the boundary rules: a shared (core) node
-// must not depend on or contain business code, and dependencies must not form cycles.
+// must not depend on or contain business code, dependencies must not form cycles,
+// and a node that joins independently fed shared stores must declare scope:/join:.
 func (m *Model) Check() []Diag {
-	return append(m.checkLocal(), m.checkCycles()...)
+	return append(append(append(m.checkLocal(), m.checkFlows()...), m.checkCycles()...), m.checkStoreJoins()...)
 }
 
 // checkLocal validates everything that can be decided file by file. Load runs it for
@@ -30,8 +31,18 @@ func (m *Model) checkLocal() []Diag {
 		m.checkEdge(e, add)
 	}
 
+	diags = append(diags, m.checkContainment()...)
+	return diags
+}
+
+// checkFlows validates flow declarations and steps on the composed model (after mounts and binds).
+func (m *Model) checkFlows() []Diag {
+	var diags []Diag
 	flows := map[string]int{}
 	for _, f := range m.Flows {
+		add := func(line int, level, format string, args ...any) {
+			diags = append(diags, Diag{File: f.File, Line: line, Level: level, Msg: fmt.Sprintf(format, args...)})
+		}
 		if first, dup := flows[f.ID]; dup {
 			add(f.Line, "error", "duplicate flow id %q (first on line %d)", f.ID, first)
 		}
@@ -52,7 +63,6 @@ func (m *Model) checkLocal() []Diag {
 			}
 		}
 	}
-	diags = append(diags, m.checkContainment()...)
 	return diags
 }
 
@@ -184,6 +194,40 @@ func (m *Model) cycleConfirmed(group []string) bool {
 		}
 	}
 	return false
+}
+
+// checkStoreJoins warns when a consumer node synchronously reads two or more independently
+// fed shared (core) stores without each store declaring `| scope: ...` and the consumer
+// declaring `| join: ...`.
+func (m *Model) checkStoreJoins() []Diag {
+	var diags []Diag
+	for _, id := range m.Order {
+		sj := m.NodeStoreJoin(id)
+		if sj == nil {
+			continue
+		}
+		var summaries, need []string
+		for _, b := range sj.Stores {
+			summaries = append(summaries, fmt.Sprintf("%s (%s)", b.Store, strings.Join(b.Chain, " -> ")))
+			if b.Scope == "" {
+				need = append(need, fmt.Sprintf(`"| scope: <coverage, schedule, basis>" on %q`, b.Store))
+			}
+		}
+		if sj.Join == "" {
+			need = append(need, fmt.Sprintf(`"| join: <key and mismatch rule>" on %q`, id))
+		}
+		if len(need) == 0 {
+			continue
+		}
+		n := m.Nodes[id]
+		diags = append(diags, Diag{
+			File:  n.File,
+			Line:  n.Line,
+			Level: "warn",
+			Msg:   fmt.Sprintf("node %q joins multiple fed stores [%s]; declare %s", id, strings.Join(summaries, "; "), strings.Join(need, " and ")),
+		})
+	}
+	return diags
 }
 
 func joinIDs(ids []string) string {

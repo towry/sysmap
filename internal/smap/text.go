@@ -200,6 +200,24 @@ func (m *Model) Show(id string) (string, error) {
 	m.writeEdges(&b, "used by", true, id, func(e Edge) (string, bool) {
 		return e.From, m.InSubtree(e.To, id) && !m.InSubtree(e.From, id)
 	})
+	if sj := m.NodeStoreJoin(id); sj != nil {
+		b.WriteString("joins stores:\n")
+		for _, st := range sj.Stores {
+			fmt.Fprintf(&b, "  %s : %s\n", st.Store, strings.Join(st.Chain, " -> "))
+			if st.Scope != "" {
+				fmt.Fprintf(&b, "    scope: %s\n", st.Scope)
+			} else {
+				b.WriteString("    scope: (missing | scope:)\n")
+			}
+		}
+		if sj.Join != "" {
+			fmt.Fprintf(&b, "  join: %s\n", sj.Join)
+		} else {
+			b.WriteString("  join: (missing | join:)\n")
+		}
+	} else if chain := m.WriteChain(id); len(chain) > 0 {
+		fmt.Fprintf(&b, "write chain: %s\n", strings.Join(chain, " -> "))
+	}
 	var inFlows []string
 	for _, f := range m.Flows {
 		for _, s := range f.Steps {
